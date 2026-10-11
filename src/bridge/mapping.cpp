@@ -64,6 +64,7 @@ std::expected<Mapping,std::string> Mapping::open(const std::string& name,bool cr
 #endif
     if(create) {
         std::construct_at(p->data);
+        p->data->heartbeat_ns.store(now_ns(),std::memory_order_relaxed);
         p->data->ready.store(magic,std::memory_order_release);
     } else if(p->data->ready.load(std::memory_order_acquire)!=magic || p->data->protocol!=version || p->data->bytes!=sizeof(Shared))
         return std::unexpected("session not ready or ABI mismatch");

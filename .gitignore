@@ -13,3 +13,7 @@ build/
 logs/
 cache/
 vendor/
+runtime/
+.gradle/
+src/headless_mc/fabric/build/
+src/headless_mc/fabric/.gradle/

@@ -18,10 +18,10 @@ int main(int argc,char** argv) {
     const auto end=next+std::chrono::seconds(seconds);
     while(next<end) {
         std::uint32_t pressed=0;
-        while(auto* packet=s.backend_in.peek()) { pressed |= packet->pressed_buttons; input=*packet; s.backend_in.consume(); }
+        while(auto* packet=s.to_backend.peek()) { pressed |= packet->pressed_buttons; input=*packet; s.to_backend.consume(); }
         input.pressed_buttons=pressed;
         auto state=world.tick(input);
-        if(auto* packet=s.backend_out.reserve()) { *packet=state; s.backend_out.publish(); }
+        if(auto* packet=s.to_frontend.reserve()) { *packet=state; s.to_frontend.publish(); }
         next+=std::chrono::milliseconds(50);
         std::this_thread::sleep_until(next);
         if(std::chrono::steady_clock::now()-next>std::chrono::milliseconds(50)) next=std::chrono::steady_clock::now();

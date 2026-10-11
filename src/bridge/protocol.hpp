@@ -6,7 +6,7 @@
 #include <type_traits>
 
 namespace steve {
-inline constexpr std::uint32_t magic = 0x53545645, version = 1;
+inline constexpr std::uint32_t magic = 0x53545645, version = 2;
 enum Button : std::uint32_t { a=1, b=2, z=4, r=8, c_up=16, c_down=32, c_left=64, c_right=128 };
 enum class Hand : std::uint32_t { idle, mine_swing, attack, block, consume, bow };
 enum class Sound : std::uint32_t { none, hit, broken_block, eat, shoot };
@@ -18,6 +18,10 @@ struct alignas(64) OotToMcPacket {
     std::uint32_t buttons{}, locked{}, selected_slot{};
     Vec3 target{};
     std::uint32_t pressed_buttons{};
+    float damage{};
+    std::uint32_t scene{}, flags{};
+    std::uint32_t health_capacity{};
+    std::array<std::uint32_t,12> reserved{};
 };
 struct Item { std::uint32_t id{}, metadata{}, count{}, durability{}; };
 struct alignas(64) McToOotPacket {
@@ -29,8 +33,11 @@ struct alignas(64) McToOotPacket {
     std::uint32_t selected_slot{}, audio_count{};
     std::array<Sound, 8> audio{};
     std::array<Item, 9> hotbar{};
+    // A completed mining operation acknowledged with a monotonic operation ID.
+    std::uint64_t block_event{};
+    std::uint32_t block_id{}, backend_kind{};
 };
-static_assert(sizeof(OotToMcPacket)==64 && alignof(OotToMcPacket)==64);
+static_assert(sizeof(OotToMcPacket)==128 && alignof(OotToMcPacket)==64);
 static_assert(sizeof(McToOotPacket)==256 && alignof(McToOotPacket)==64);
 static_assert(offsetof(OotToMcPacket, target)==48);
 static_assert(std::is_trivially_copyable_v<McToOotPacket>);
@@ -56,8 +63,9 @@ template<class T, std::uint32_t N=64> struct alignas(64) Ring {
 struct alignas(64) Shared {
     std::atomic<std::uint32_t> ready{0};
     std::uint32_t protocol{version}, bytes{sizeof(Shared)};
-    Ring<OotToMcPacket> frontend_in, backend_in;
-    Ring<McToOotPacket> backend_out, frontend_out;
+    alignas(64) std::atomic<std::uint64_t> heartbeat_ns{0};
+    Ring<OotToMcPacket> to_backend;
+    Ring<McToOotPacket> to_frontend;
 };
 inline std::uint64_t now_ns() noexcept;
 }

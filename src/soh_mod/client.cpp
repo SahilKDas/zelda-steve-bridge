@@ -24,15 +24,18 @@ bool Client::frame(OotToMcPacket input) {
     last_buttons=input.buttons;
     input.pressed_buttons=pending_pressed;
     auto& s=mapping->get();
+    if(s.ready.load(std::memory_order_acquire)!=magic || now_ns()-s.heartbeat_ns.load(std::memory_order_acquire)>500'000'000) {
+        disconnect(); return false;
+    }
     bool sent=false;
-    if(auto* p=s.frontend_in.reserve()) { *p=input; s.frontend_in.publish(); sent=true; pending_pressed=0; }
-    while(auto* p=s.frontend_out.peek()) {
+    if(auto* p=s.to_backend.reserve()) { *p=input; s.to_backend.publish(); sent=true; pending_pressed=0; }
+    while(auto* p=s.to_frontend.peek()) {
         previous=current; current=*p;
         for(std::uint32_t i=0;i<std::min(p->audio_count,8u);++i) {
             if(audio_write-audio_read<sounds.size()) sounds[audio_write++%sounds.size()]=p->audio[i];
             else ++dropped_audio;
         }
-        s.frontend_out.consume();
+        s.to_frontend.consume();
     }
     // Reopen after a stalled/crashed bridge. Windows names live until all handles close.
     if(current.tick && now_ns()-current.time_ns>2'000'000'000) disconnect();
