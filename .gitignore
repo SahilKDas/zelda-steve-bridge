@@ -1,0 +1,15 @@
+build/
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.exe
+*.pdb
+*.rom
+*.z64
+*.otr
+*.o2r
+logs/
+cache/
+vendor/
