@@ -16,7 +16,7 @@ typedef struct StevePose {
     float health;
     int32_t destruction_stage;
     uint64_t tick,block_event;
-    uint32_t item_kind,selected_slot;
+    uint32_t item_kind,selected_slot,block_id,reserved;
     SteveItem hotbar[9];
 } StevePose;
 int SteveBridge_Frame(const SteveInput* input, StevePose* pose);

@@ -12,7 +12,7 @@ class Client {
     std::optional<Mapping> mapping;
     McToOotPacket previous{}, current{};
     std::uint64_t sequence{}, retry_at{};
-    std::uint32_t last_buttons{}, pending_pressed{}, audio_read{}, audio_write{}, dropped_audio{};
+    std::uint32_t last_buttons{}, pending_pressed{}, pending_flags{}, audio_read{}, audio_write{}, dropped_audio{};
     std::array<Sound,64> sounds{};
     float pending_damage{};
 public:

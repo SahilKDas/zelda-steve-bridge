@@ -11,7 +11,7 @@ bool Client::connect(const std::string& session) {
     mapping.emplace(std::move(*result));
     return true;
 }
-void Client::disconnect() { mapping.reset(); previous={}; current={}; retry_at=0; last_buttons=0; pending_pressed=0; pending_damage=0; audio_read=audio_write=0; }
+void Client::disconnect() { mapping.reset(); previous={}; current={}; retry_at=0; last_buttons=0; pending_pressed=0; pending_flags=0; pending_damage=0; audio_read=audio_write=0; }
 std::optional<Sound> Client::pop_audio() {
     if(audio_read==audio_write) return std::nullopt;
     return sounds[audio_read++%sounds.size()];
@@ -21,16 +21,22 @@ bool Client::frame(OotToMcPacket input) {
     input.sequence=++sequence;
     input.time_ns=now_ns();
     pending_pressed |= input.buttons & ~last_buttons;
+    pending_flags |= input.flags & 1u;
+    input.flags=(input.flags & ~1u) | pending_flags;
     if(std::isfinite(input.damage) && input.damage>0) pending_damage=std::min(20.0f,pending_damage+input.damage);
     input.damage=pending_damage;
     last_buttons=input.buttons;
     input.pressed_buttons=pending_pressed;
     auto& s=mapping->get();
-    if(s.ready.load(std::memory_order_acquire)!=magic || now_ns()-s.heartbeat_ns.load(std::memory_order_acquire)>500'000'000) {
+    // Sample the heartbeat before the clock: a concurrent update must not
+    // underflow an unsigned age calculation and spuriously disconnect.
+    const auto heartbeat=s.heartbeat_ns.load(std::memory_order_acquire);
+    const auto time=now_ns();
+    if(s.ready.load(std::memory_order_acquire)!=magic || (time>=heartbeat && time-heartbeat>500'000'000)) {
         disconnect(); return false;
     }
     bool sent=false;
-    if(auto* p=s.to_backend.reserve()) { *p=input; s.to_backend.publish(); sent=true; pending_pressed=0; pending_damage=0; }
+    if(auto* p=s.to_backend.reserve()) { *p=input; s.to_backend.publish(); sent=true; pending_pressed=0; pending_flags=0; pending_damage=0; }
     while(auto* p=s.to_frontend.peek()) {
         previous=current; current=*p;
         for(std::uint32_t i=0;i<std::min(p->audio_count,8u);++i) {

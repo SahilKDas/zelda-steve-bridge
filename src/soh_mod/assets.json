@@ -21,6 +21,6 @@
     "consume": "right arm rotated -1.3 radians",
     "bow": "right arm rotated -1.3 radians with procedural bow"
   },
-  "held_meshes": ["pickaxe","sword","food","bow","block","shield"],
+  "held_meshes": ["pickaxe","sword","food","bow","block","arrow","shield"],
   "arena": { "cube_half_extents": [10,10,10], "offset": [0,10,40], "collision_triangles": 12 }
 }

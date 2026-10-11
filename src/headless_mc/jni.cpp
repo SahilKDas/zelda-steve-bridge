@@ -47,7 +47,10 @@ JNIEXPORT jlong JNICALL Java_org_ocarina_bridge_NativeBridge_now(JNIEnv*,jclass)
 JNIEXPORT jboolean JNICALL Java_org_ocarina_bridge_NativeBridge_alive(JNIEnv*,jclass) {
     if(!mapping) return JNI_FALSE;
     auto& s=mapping->get();
-    return s.ready.load(std::memory_order_acquire)==steve::magic && steve::now_ns()-s.heartbeat_ns.load(std::memory_order_acquire)<500'000'000;
+    const auto heartbeat=s.heartbeat_ns.load(std::memory_order_acquire);
+    const auto time=steve::now_ns();
+    return s.ready.load(std::memory_order_acquire)==steve::magic &&
+        (time<heartbeat || time-heartbeat<500'000'000);
 }
 JNIEXPORT void JNICALL Java_org_ocarina_bridge_NativeBridge_close(JNIEnv*,jclass) { input_owned=false; output_owned=false; mapping.reset(); }
 }

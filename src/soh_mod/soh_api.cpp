@@ -1,5 +1,7 @@
 #include "soh_mod/soh_api.h"
 #include "soh_mod/client.hpp"
+static_assert(sizeof(StevePose)==200);
+static_assert(offsetof(StevePose,hotbar)==56);
 namespace { steve::Client client; }
 extern "C" int SteveBridge_Frame(const SteveInput* input,StevePose* pose) {
     if(!input || !pose || !client.connect("default")) return 0;
@@ -21,6 +23,7 @@ extern "C" int SteveBridge_GetPose(StevePose* pose) {
     pose->health=state.health; pose->destruction_stage=state.destruction_stage;
     pose->tick=state.tick; pose->block_event=state.block_event;
     pose->item_kind=state.backend_kind>>8; pose->selected_slot=state.selected_slot;
+    pose->block_id=state.block_id;
     if(state.backend_kind==0) pose->item_kind=state.held.id;
     for(unsigned i=0;i<9;++i) {
         const auto& item=state.hotbar[i];

@@ -93,7 +93,10 @@ public final class SteveBridgeMod implements ModInitializer {
         tick++;
         if (!connected) connected = NativeBridge.open(System.getProperty("steve.session", "default"));
         if (!connected) return;
-        if (!NativeBridge.alive()) { NativeBridge.close(); connected = false; return; }
+        if (!NativeBridge.alive()) {
+            player.clearActiveItem(); abortMining(); lastButtons=0;
+            NativeBridge.close(); connected = false; return;
+        }
         pressed = 0;
         damage = 0;
         for (ByteBuffer packet; (packet = NativeBridge.peek()) != null;) {
@@ -101,7 +104,11 @@ public final class SteveBridgeMod implements ModInitializer {
             finally { NativeBridge.consume(); }
         }
         long now = NativeBridge.now();
-        if (now < inputTime || now - inputTime > 250_000_000L) { buttons = 0; pressed = 0; }
+        if (now < inputTime || now - inputTime > 250_000_000L) {
+            buttons = 0; pressed = 0;
+            // A lost frontend cancels a draw; it is not an intentional bow release.
+            player.clearActiveItem();
+        }
         else pressed |= buttons & ~lastButtons;
         lastButtons = buttons;
         player.getInventory().setSelectedSlot(Math.max(0, Math.min(8, slot)));
@@ -111,8 +118,9 @@ public final class SteveBridgeMod implements ModInitializer {
         double pz = Math.max(-6, Math.min(6, z - originZ));
         player.refreshPositionAndAngles(px + 0.5, 65 + py, pz + 0.5,
                 -(float)Math.toDegrees(yaw), (float)Math.toDegrees(pitch));
+        player.setOnGround((flags & 2) != 0);
         if (Float.isFinite(damage) && damage > 0) player.damage(world, world.getDamageSources().generic(), Math.min(damage, 20));
-        if ((flags & 1) != 0) { player.setHealth(20); player.getHungerManager().setFoodLevel(12); flags=0; }
+        if ((flags & 1) != 0) { player.setHealth(20); player.getHungerManager().setFoodLevel(12); flags &= ~1; }
         hand = 0;
         boolean holdingUse = (buttons & 1) != 0 || (pressed & 1) != 0;
         if ((buttons & 8) != 0) {
@@ -193,7 +201,7 @@ public final class SteveBridgeMod implements ModInitializer {
         tx = p.getFloat(48); ty = p.getFloat(52); tz = p.getFloat(56);
         pressed |= p.getInt(60); damage += p.getFloat(64);
         int newScene = p.getInt(68);
-        flags |= p.getInt(72);
+        flags = (flags & 1) | p.getInt(72);
         if (scene != newScene) {
             scene = newScene; originX = x; originY = y; originZ = z; abortMining();
             world.setBlockState(new BlockPos(0,65,2),Blocks.STONE.getDefaultState());
@@ -245,9 +253,10 @@ public final class SteveBridgeMod implements ModInitializer {
         int count = Math.min(8, sounds.size()); p.putInt(60,count);
         for(int i=0;i<count;i++) p.putInt(64+i*4,sounds.removeFirst());
         for(int i=0;i<9;i++) item(p,96+i*16,player.getInventory().getStack(i));
-        p.putLong(240,blockEvent); p.putInt(248,miningBlockId);
+        p.putLong(240,blockEvent);
+        p.putInt(248,Registries.BLOCK.getRawId(world.getBlockState(new BlockPos(0,65,2)).getBlock()));
         ItemStack held=player.getMainHandStack();
-        int kind=held.isOf(Items.IRON_PICKAXE)?1:held.isOf(Items.IRON_SWORD)?2:held.isOf(Items.COOKED_BEEF)?3:held.isOf(Items.BOW)?4:held.isEmpty()?0:5;
+        int kind=held.isOf(Items.IRON_PICKAXE)?1:held.isOf(Items.IRON_SWORD)?2:held.isOf(Items.COOKED_BEEF)?3:held.isOf(Items.BOW)?4:held.isOf(Items.ARROW)?6:held.isEmpty()?0:5;
         p.putInt(252,1 | (kind<<8));
         NativeBridge.publish();
     }

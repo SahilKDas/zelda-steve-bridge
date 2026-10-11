@@ -40,8 +40,11 @@ struct alignas(64) McToOotPacket {
 static_assert(sizeof(OotToMcPacket)==128 && alignof(OotToMcPacket)==64);
 static_assert(sizeof(McToOotPacket)==256 && alignof(McToOotPacket)==64);
 static_assert(offsetof(OotToMcPacket, target)==48);
+static_assert(offsetof(OotToMcPacket, damage)==64 && offsetof(OotToMcPacket, health_capacity)==76);
+static_assert(offsetof(McToOotPacket, hotbar)==96 && offsetof(McToOotPacket, block_event)==240);
 static_assert(std::is_trivially_copyable_v<McToOotPacket>);
 static_assert(std::atomic<std::uint32_t>::is_always_lock_free);
+static_assert(std::atomic<std::uint64_t>::is_always_lock_free);
 // One producer and one consumer per ring. The slot remains owned until consume().
 // Same architecture/compiler ABI is required; this is not a network wire format.
 template<class T, std::uint32_t N=64> struct alignas(64) Ring {
@@ -71,6 +74,8 @@ struct alignas(64) Shared {
     Ring<OotToMcPacket> to_backend;
     Ring<McToOotPacket> to_frontend;
 };
+static_assert(offsetof(Shared, heartbeat_ns)==64 && offsetof(Shared, to_backend)==128);
+static_assert(offsetof(Ring<OotToMcPacket>, slots)==128);
 inline std::uint64_t now_ns() noexcept;
 }
 #include <chrono>

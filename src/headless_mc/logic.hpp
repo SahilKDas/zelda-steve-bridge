@@ -10,6 +10,7 @@ class World {
     std::uint32_t previous_buttons{}, progress{};
 public:
     World() {
+        state.block_id=1;
         state.hotbar[0]={1,0,1,250}; // pickaxe
         state.hotbar[1]={2,0,1,250}; // sword
         state.hotbar[2]={3,0,8,0};   // food

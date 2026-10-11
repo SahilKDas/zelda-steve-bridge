@@ -6,7 +6,7 @@
 void require(bool condition,const char* message) { if(!condition) throw std::runtime_error(message); }
 int main() try {
     SteveInput input{}; StevePose pose{};
-    input.scene=static_cast<std::uint32_t>(steve::now_ns()); input.flags=1;
+    input.scene=static_cast<std::uint32_t>(steve::now_ns()); input.flags=3;
     bool connected=false;
     auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(180);
     while(std::chrono::steady_clock::now()<deadline) {
@@ -15,7 +15,7 @@ int main() try {
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
     require(connected,"real Minecraft backend startup deadline");
-    input.flags=0;
+    input.flags=2;
     auto run=[&](int frames) {
         for(int i=0;i<frames;++i) { SteveBridge_Frame(&input,&pose); std::this_thread::sleep_for(std::chrono::microseconds(16667)); }
     };
@@ -28,6 +28,7 @@ int main() try {
     run(200); // Allow vanilla's initial player join invulnerability to expire.
     require(pose.item_kind==1 && pose.hotbar[0].durability>0,"vanilla iron pickaxe initial state");
     const auto initialPick=pose.hotbar[0].durability;
+    require(pose.block_id!=0,"arena stone visible before mining");
     const auto initialFood=pose.hotbar[2].count;
     const auto initialBow=pose.hotbar[3].durability;
     const auto initialArrows=pose.hotbar[8].count;
@@ -38,6 +39,7 @@ int main() try {
     require(pose.block_event>event,"vanilla stone mining acknowledged");
     require(pose.hotbar[0].durability==initialPick-1,"vanilla mining durability loss");
     input.buttons=0; run(15);
+    require(pose.block_id==0,"mined arena block removes native collision");
     bool blockDrop=false;
     for(const auto& item:pose.hotbar) if(item.id && item.id!=pose.hotbar[0].id && item.id!=pose.hotbar[1].id && item.id!=pose.hotbar[2].id && item.id!=pose.hotbar[3].id && item.id!=pose.hotbar[8].id) blockDrop=true;
     require(blockDrop,"vanilla mined block inventory pickup");
@@ -55,6 +57,14 @@ int main() try {
     awaitState([&]{return pose.hotbar[3].durability==initialBow-1 && pose.hotbar[8].count==initialArrows-1;},"vanilla bow release consumes arrow and durability");
     int sounds=0; while(SteveBridge_PopAudio()!=0) ++sounds;
     require(sounds>=3,"native audio trigger queue");
+    const auto arrowsAfterShot=pose.hotbar[8].count;
+    const auto bowAfterShot=pose.hotbar[3].durability;
+    input.buttons=steve::a; run(60);
+    SteveBridge_Disconnect();
+    std::this_thread::sleep_for(std::chrono::milliseconds(600));
+    input.buttons=0; run(20);
+    awaitState([&]{return pose.hand==static_cast<unsigned>(steve::Hand::idle);},"lost frontend cancels active bow use");
+    require(pose.hotbar[8].count==arrowsAfterShot && pose.hotbar[3].durability==bowAfterShot,"disconnect does not shoot or consume durability");
     std::cout<<"PASS real Minecraft 1.21.11: mining, drops, durability, shield, health, food, bow, native SoH C API and audio\n";
     SteveBridge_Disconnect();
     return 0;

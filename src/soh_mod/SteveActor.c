@@ -10,6 +10,7 @@
 static StevePose sPose;
 static int sConnected;
 static uint32_t sSlot;
+static uint32_t sSceneSerial;
 int SteveActor_IsReady(void) { return sConnected && CVarGetInteger("gEnhancements.SteveBridge",1) && SteveBridge_GetPose(&sPose); }
 static PlayState* sPlay;
 static Vec3f sOrigin;
@@ -18,17 +19,17 @@ static int sLastHealth, sBlockAlive;
 static DynaPolyActor sBlock;
 static int sTestMode=-1, sTestFrame, sRenderedFrames;
 static uint32_t sTestPick, sTestFood, sTestBow, sTestArrows;
-static int sTestShield, sTestDamage;
+static int sTestShield, sTestDamage, sTestCollision;
 static void SteveActor_TestInput(SteveInput* packet) {
     if (sTestMode < 0) sTestMode=getenv("STEVE_IN_GAME_TEST") != NULL;
     if (!sTestMode) return;
     packet->buttons=0; packet->locked=0; packet->slot=0;
-    if (!sConnected) { packet->flags=1; return; }
+    if (!sConnected) { packet->flags|=1; return; }
     sTestFrame++;
     if (sTestFrame==175) sTestShield=sPose.hand==3;
     if (sTestFrame==210) sTestDamage=sPose.health<=16.1f;
     if (sTestFrame==1) {
-        packet->flags=1;
+        packet->flags|=1;
         sTestPick=sPose.hotbar[0].durability; sTestFood=sPose.hotbar[2].count;
         sTestBow=sPose.hotbar[3].durability; sTestArrows=sPose.hotbar[8].count;
     }
@@ -40,7 +41,7 @@ static void SteveActor_TestInput(SteveInput* packet) {
     else if (sTestFrame>=350) packet->slot=3;
     if (sTestFrame==380) {
         FILE* log=fopen("steve-in-game-test.log","w");
-        int passed=sRenderedFrames>20 && !sBlockAlive && sTestShield && sTestDamage &&
+        int passed=sRenderedFrames>20 && sTestCollision && !sBlockAlive && sTestShield && sTestDamage &&
             sPose.hotbar[0].durability==sTestPick-1 && sPose.hotbar[2].count==sTestFood-1 &&
             sPose.hotbar[3].durability==sTestBow-1 && sPose.hotbar[8].count==sTestArrows-1;
         if (log) {
@@ -89,6 +90,7 @@ static void SteveBlock_Create(PlayState* play) {
     sBlock.actor.scale.x=sBlock.actor.scale.y=sBlock.actor.scale.z=1;
     DynaPolyActor_Init(&sBlock,DPM_UNK);
     sBlock.bgId=DynaPoly_SetBgActor(play,&play->colCtx.dyna,&sBlock.actor,&sBlockCollision);
+    if (sTestMode && sBlock.bgId < BG_ACTOR_MAX) sTestCollision=1;
     sBlockAlive=1;
 }
 
@@ -100,6 +102,7 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
     if (sPlay != play) {
         sPlay=play; sOrigin=actor->world.pos; sLastHealth=gSaveContext.health;
         sLastTick=0; sBlockEvent=0; sBlockAlive=0;
+        sSceneSerial++;
     }
     if (input->press.button & BTN_CRIGHT) sSlot = (sSlot + 1) % 9;
     if (input->press.button & BTN_CLEFT) sSlot = (sSlot + 8) % 9;
@@ -109,11 +112,12 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
     packet.yaw = actor->shape.rot.y * (3.14159265f / 32768.0f);
     packet.pitch = actor->focus.rot.x * (3.14159265f / 32768.0f);
     packet.slot = sSlot;
-    packet.scene=(uint32_t)play->sceneNum;
+    packet.scene=(sSceneSerial<<16) | ((uint32_t)play->sceneNum & 65535u);
     packet.health_capacity=(uint32_t)gSaveContext.healthCapacity;
     if (sConnected && gSaveContext.health < sLastHealth && gSaveContext.healthCapacity > 0)
         packet.damage=(sLastHealth-gSaveContext.health)*20.0f/gSaveContext.healthCapacity;
     if (sConnected && sPose.health <= 0 && gSaveContext.health > 0) packet.flags=1;
+    if (actor->bgCheckFlags & BGCHECKFLAG_GROUND) packet.flags|=2;
     if (!(player->stateFlags1 & (PLAYER_STATE1_INPUT_DISABLED | PLAYER_STATE1_IN_CUTSCENE))) {
         if (input->cur.button & BTN_A) packet.buttons |= 1;
         if (input->cur.button & BTN_B) packet.buttons |= 2;
@@ -138,12 +142,16 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
     }
     SteveActor_TestInput(&packet);
     sConnected = SteveBridge_Frame(&packet, &sPose);
+    if (!sConnected && sBlockAlive) {
+        if (sBlock.bgId < BG_ACTOR_MAX) DynaPoly_DeleteBgActor(play,&play->colCtx.dyna,sBlock.bgId);
+        sBlockAlive=0;
+    }
     if (sConnected && sPose.tick != sLastTick) {
         int sound;
-        if (!sLastTick) { SteveBlock_Create(play); sBlockEvent=sPose.block_event; }
+        if (sPose.block_id && !sBlockAlive) SteveBlock_Create(play);
         sLastTick=sPose.tick;
-        if (sPose.block_event != sBlockEvent) {
-            sBlockEvent=sPose.block_event;
+        sBlockEvent=sPose.block_event;
+        if (!sPose.block_id && sBlockAlive) {
             if (sBlockAlive && sBlock.bgId < BG_ACTOR_MAX) DynaPoly_DeleteBgActor(play,&play->colCtx.dyna,sBlock.bgId);
             sBlockAlive=0;
         }
@@ -234,6 +242,11 @@ int SteveActor_Draw(Actor* actor, PlayState* play) {
             SteveBox(play,0,-15,3,0.5f,0.5f,1.5f,0,125,90,45);
             SteveBox(play,0,-10,2,0.2f,5,0.2f,0,230,220,190);
         } else if (sPose.item_kind==5) SteveBox(play,0,-10,4,2,2,2,0,120,120,120);
+        else if (sPose.item_kind==6) {
+            SteveBox(play,0,-10,4,0.35f,6,0.35f,0,145,105,60);
+            SteveBox(play,0,-4,4,0.7f,1,0.7f,0,185,185,195);
+            SteveBox(play,0,-15,4,1,1,0.3f,0,235,235,230);
+        }
         Matrix_Pop();
         Matrix_Push();
         Matrix_Translate(8,25,0,MTXMODE_APPLY);
@@ -261,16 +274,16 @@ int SteveActor_Draw(Actor* actor, PlayState* play) {
         GfxPrint_Init(&printer);
         GfxPrint_Open(&printer,OVERLAY_DISP);
         GfxPrint_SetColor(&printer,255,255,255,255);
-        GfxPrint_SetPos(&printer,2,25);
+        GfxPrint_SetPos(&printer,2,22);
         GfxPrint_Printf(&printer,"MC ");
         for(i=0;i<9;i++) {
             if ((uint32_t)i==sPose.selected_slot) GfxPrint_SetColor(&printer,255,215,60,255);
             else GfxPrint_SetColor(&printer,190,190,190,255);
-            GfxPrint_Printf(&printer,"%d:%d ",i+1,(int)sPose.hotbar[i].count);
+            GfxPrint_Printf(&printer,"%d ",(int)sPose.hotbar[i].count);
         }
         GfxPrint_SetColor(&printer,255,255,255,255);
-        GfxPrint_SetPos(&printer,2,26);
-        GfxPrint_Printf(&printer,"Tool %u  Mining %d",sPose.hotbar[sPose.selected_slot%9].durability,sPose.destruction_stage);
+        GfxPrint_SetPos(&printer,2,23);
+        GfxPrint_Printf(&printer,"Slot %u  Dur %u  Mine %d",sPose.selected_slot+1,sPose.hotbar[sPose.selected_slot%9].durability,sPose.destruction_stage);
         OVERLAY_DISP=GfxPrint_Close(&printer);
         GfxPrint_Destroy(&printer);
         CLOSE_DISPS(play->state.gfxCtx);
