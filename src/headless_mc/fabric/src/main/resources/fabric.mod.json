@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "steve_bridge",
+  "version": "1.0.0",
+  "name": "Ocarina Steve Native Bridge",
+  "environment": "server",
+  "entrypoints": { "main": ["org.ocarina.bridge.SteveBridgeMod"] },
+  "mixins": ["steve_bridge.mixins.json"],
+  "depends": { "fabricloader": ">=0.19.5", "minecraft": "1.21.11", "java": ">=21", "fabric-lifecycle-events-v1": "*" }
+}
