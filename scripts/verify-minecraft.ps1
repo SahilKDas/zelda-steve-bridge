@@ -1,6 +1,7 @@
-param([string]$Java = "$env:JAVA_HOME/bin/java.exe")
+param([string]$Java = "$env:JAVA_HOME/bin/java.exe", [string]$Verifier)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+if (-not $Verifier) { $Verifier="$root/build/minecraft_verify.exe" }
 $runtime = "$root/runtime/minecraft"
 if (Test-Path -LiteralPath "$runtime/stop.request") { Remove-Item -LiteralPath "$runtime/stop.request" }
 $bridge = Start-Process "$root/build/bridge.exe" -ArgumentList default,300 -WindowStyle Hidden -PassThru
@@ -9,7 +10,7 @@ try {
     $arguments = '"{0}" "{1}" "{2}" 240' -f $Java,$runtime,"$root/build/libsteve_jni.dll"
     $server = Start-Process "$root/build/mc_supervisor.exe" -ArgumentList $arguments -WindowStyle Hidden `
         -RedirectStandardOutput "$runtime/resources.log" -RedirectStandardError "$runtime/supervisor-error.log" -PassThru
-    & "$root/build/minecraft_verify.exe"
+    & $Verifier
     if ($LASTEXITCODE -ne 0) { throw 'Real Minecraft integration test failed' }
 } finally {
     if ($server -and -not $server.HasExited) {

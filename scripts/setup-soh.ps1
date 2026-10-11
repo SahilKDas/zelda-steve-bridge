@@ -14,5 +14,16 @@ $exe = "$root/vendor/shipwright/x64/Release/soh.exe"
 if (-not (Test-Path -LiteralPath $exe)) { throw 'Compiled soh.exe is missing' }
 Copy-Item -LiteralPath $exe -Destination "$runtime/soh.exe"
 Copy-Item -LiteralPath "$root/build/soh/soh/soh.o2r" -Destination "$runtime/soh.o2r"
+if (Test-Path -LiteralPath "$root/build/soh/gamecontrollerdb.txt") {
+    Copy-Item -LiteralPath "$root/build/soh/gamecontrollerdb.txt" -Destination "$runtime/gamecontrollerdb.txt"
+}
+$strip = Get-Command strip.exe -ErrorAction SilentlyContinue
+if (-not $strip) { throw 'Put the MSYS2 UCRT64 bin directory on PATH so the Release executable can be stripped' }
+& $strip.Source --strip-unneeded "$runtime/soh.exe"
+if ($LASTEXITCODE -ne 0) { throw 'Release symbol stripping failed' }
+if (-not (Test-Path -LiteralPath "$runtime/shipofharkinian.json")) {
+    '{"CVars":{"gSettings":{"InterpolationFPS":60},"gEnhancements":{"SteveBridge":1}}}' |
+        Set-Content -LiteralPath "$runtime/shipofharkinian.json"
+}
 if (Test-Path -LiteralPath "$runtime/torch.hash.yml") { Remove-Item -LiteralPath "$runtime/torch.hash.yml" }
 & "$PSScriptRoot/disk-budget.ps1"

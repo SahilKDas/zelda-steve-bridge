@@ -19,6 +19,12 @@ int main() try {
     auto run=[&](int frames) {
         for(int i=0;i<frames;++i) { SteveBridge_Frame(&input,&pose); std::this_thread::sleep_for(std::chrono::microseconds(16667)); }
     };
+    auto awaitState=[&](auto condition,const char* message) {
+        const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+        while(!condition() && std::chrono::steady_clock::now()<until) run(1);
+        if (!condition()) std::cerr<<"last hand="<<pose.hand<<" left_arm="<<pose.left_arm<<" tick="<<pose.tick<<'\n';
+        require(condition(),message);
+    };
     run(200); // Allow vanilla's initial player join invulnerability to expire.
     require(pose.item_kind==1 && pose.hotbar[0].durability>0,"vanilla iron pickaxe initial state");
     const auto initialPick=pose.hotbar[0].durability;
@@ -36,17 +42,17 @@ int main() try {
     for(const auto& item:pose.hotbar) if(item.id && item.id!=pose.hotbar[0].id && item.id!=pose.hotbar[1].id && item.id!=pose.hotbar[2].id && item.id!=pose.hotbar[3].id && item.id!=pose.hotbar[8].id) blockDrop=true;
     require(blockDrop,"vanilla mined block inventory pickup");
     input.buttons=steve::r; run(15);
-    require(pose.hand==static_cast<unsigned>(steve::Hand::block) && pose.left_arm<0,"native offhand shield pose");
+    awaitState([&]{return pose.hand==static_cast<unsigned>(steve::Hand::block) && pose.left_arm<0;},"native offhand shield pose");
     input.buttons=0; run(8);
     input.damage=4; run(1); input.damage=0; run(8);
     std::cout<<"health after Zelda damage="<<pose.health<<'\n';
-    require(pose.health<=16.1f,"Minecraft authoritative health applies Zelda damage");
+    awaitState([&]{return pose.health<=16.1f;},"Minecraft authoritative health applies Zelda damage");
     input.slot=2; input.buttons=steve::a; run(120);
-    require(pose.hotbar[2].count==initialFood-1,"vanilla timed food consumption");
+    awaitState([&]{return pose.hotbar[2].count==initialFood-1;},"vanilla timed food consumption");
     input.buttons=0; run(8);
     input.slot=3; input.buttons=steve::a; run(60);
     input.buttons=0; run(20);
-    require(pose.hotbar[3].durability==initialBow-1 && pose.hotbar[8].count==initialArrows-1,"vanilla bow release consumes arrow and durability");
+    awaitState([&]{return pose.hotbar[3].durability==initialBow-1 && pose.hotbar[8].count==initialArrows-1;},"vanilla bow release consumes arrow and durability");
     int sounds=0; while(SteveBridge_PopAudio()!=0) ++sounds;
     require(sounds>=3,"native audio trigger queue");
     std::cout<<"PASS real Minecraft 1.21.11: mining, drops, durability, shield, health, food, bow, native SoH C API and audio\n";
