@@ -11,15 +11,29 @@ bool Client::connect(const std::string& session) {
     mapping.emplace(std::move(*result));
     return true;
 }
-void Client::disconnect() { mapping.reset(); previous={}; current={}; retry_at=0; }
+void Client::disconnect() { mapping.reset(); previous={}; current={}; retry_at=0; last_buttons=0; pending_pressed=0; audio_read=audio_write=0; }
+std::optional<Sound> Client::pop_audio() {
+    if(audio_read==audio_write) return std::nullopt;
+    return sounds[audio_read++%sounds.size()];
+}
 bool Client::frame(OotToMcPacket input) {
     if(!mapping) return false;
     input.sequence=++sequence;
     input.time_ns=now_ns();
+    pending_pressed |= input.buttons & ~last_buttons;
+    last_buttons=input.buttons;
+    input.pressed_buttons=pending_pressed;
     auto& s=mapping->get();
     bool sent=false;
-    if(auto* p=s.frontend_in.reserve()) { *p=input; s.frontend_in.publish(); sent=true; }
-    while(auto* p=s.frontend_out.peek()) { previous=current; current=*p; s.frontend_out.consume(); }
+    if(auto* p=s.frontend_in.reserve()) { *p=input; s.frontend_in.publish(); sent=true; pending_pressed=0; }
+    while(auto* p=s.frontend_out.peek()) {
+        previous=current; current=*p;
+        for(std::uint32_t i=0;i<std::min(p->audio_count,8u);++i) {
+            if(audio_write-audio_read<sounds.size()) sounds[audio_write++%sounds.size()]=p->audio[i];
+            else ++dropped_audio;
+        }
+        s.frontend_out.consume();
+    }
     // Reopen after a stalled/crashed bridge. Windows names live until all handles close.
     if(current.tick && now_ns()-current.time_ns>2'000'000'000) disconnect();
     return sent;

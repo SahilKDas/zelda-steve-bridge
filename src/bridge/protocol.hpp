@@ -17,7 +17,7 @@ struct alignas(64) OotToMcPacket {
     float yaw{}, pitch{};
     std::uint32_t buttons{}, locked{}, selected_slot{};
     Vec3 target{};
-    std::uint32_t reserved{};
+    std::uint32_t pressed_buttons{};
 };
 struct Item { std::uint32_t id{}, metadata{}, count{}, durability{}; };
 struct alignas(64) McToOotPacket {

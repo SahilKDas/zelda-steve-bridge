@@ -28,7 +28,7 @@ public:
         state.swing=0;
         const bool stale=state.time_ns<input.time_ns || state.time_ns-input.time_ns>250'000'000;
         auto buttons=stale?0u:input.buttons;
-        auto pressed=buttons & ~previous_buttons;
+        auto pressed=stale?0u:((buttons & ~previous_buttons) | input.pressed_buttons);
         previous_buttons=buttons;
         auto sound=[&](Sound value) { state.audio[state.audio_count++]=value; };
         if(buttons&r) state.hand=Hand::block;

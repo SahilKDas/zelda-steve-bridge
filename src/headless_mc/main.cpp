@@ -17,7 +17,9 @@ int main(int argc,char** argv) {
     auto next=std::chrono::steady_clock::now();
     const auto end=next+std::chrono::seconds(seconds);
     while(next<end) {
-        while(auto* packet=s.backend_in.peek()) { input=*packet; s.backend_in.consume(); }
+        std::uint32_t pressed=0;
+        while(auto* packet=s.backend_in.peek()) { pressed |= packet->pressed_buttons; input=*packet; s.backend_in.consume(); }
+        input.pressed_buttons=pressed;
         auto state=world.tick(input);
         if(auto* packet=s.backend_out.reserve()) { *packet=state; s.backend_out.publish(); }
         next+=std::chrono::milliseconds(50);
