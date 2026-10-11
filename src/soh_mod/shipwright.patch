@@ -15,6 +15,23 @@ index 6ed89d9e..957e0a21 100644
 -endif()
 \ No newline at end of file
 +endif()
+diff --git a/CMake/automate-vcpkg.cmake b/CMake/automate-vcpkg.cmake
+index 40919495..a6802fcc 100644
+--- a/CMake/automate-vcpkg.cmake
++++ b/CMake/automate-vcpkg.cmake
+@@ -123,8 +123,10 @@ macro(_install_or_update_vcpkg)
+         # execute_process(COMMAND git checkout 745a0aea597771a580d0b0f4886ea1e3a94dbca6 WORKING_DIRECTORY ${VCPKG_ROOT})
+     else()
+         # The following command has no effect if the vcpkg repository is in a detached head state.
+-        message(STATUS "Auto-updating vcpkg in ${VCPKG_ROOT}")
+-        execute_process(COMMAND git pull WORKING_DIRECTORY ${VCPKG_ROOT})
++        if(NOT STEVE_BRIDGE_ROOT)
++            message(STATUS "Auto-updating vcpkg in ${VCPKG_ROOT}")
++            execute_process(COMMAND git pull WORKING_DIRECTORY ${VCPKG_ROOT})
++        endif()
+     endif()
+ 
+     if(NOT EXISTS ${VCPKG_ROOT}/README.md)
 diff --git a/soh/CMakeLists.txt b/soh/CMakeLists.txt
 index f356d214..ee7458a3 100644
 --- a/soh/CMakeLists.txt

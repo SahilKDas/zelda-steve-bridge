@@ -1,138 +1,75 @@
-# Zelda–Steve native bridge
+# Zelda–Steve native Minecraft bridge
 
-This repository contains a working C++26-mode shared-memory relay, a deterministic
-headless Minecraft-style logic harness, a native SoH client, and an in-tree player
-override patch. **This is a tested bridge prototype, not a finished integration
-with Mojang Minecraft or a visually verified SoH mod.**
+A native C++26 shared-memory bridge connects Ship of Harkinian 9.3.0 to a real Minecraft Java 1.21.11 Fabric server. Minecraft owns inventory, hotbar selection, item components, durability, health, mining and item use. SoH owns traversal, camera, collision and Zelda gameplay. The player override draws an original procedural Steve-style rigid model, held tools, shield, mining cube and hotbar HUD.
 
-## Build and test
+## Windows setup
 
-Tested on Windows with MSYS2 UCRT64 GCC 14.1 and CMake 3.29.3. Put
-`C:\msys64\ucrt64\bin` on PATH, then run from this directory:
+Prerequisites: Windows x64, Java **21** JDK, Git, MSYS2 UCRT64 GCC supporting `-std=c++26`, CMake, and Visual Studio C++ tools with CMake/Ninja and `/std:c++latest`. The installed JDK is external to the workspace; it is not downloaded or bundled. MSVC preview mode is used because complete C++26 support is not yet available. Reflection and contracts are not required by this implementation.
+
+From the repository root in PowerShell:
 
 ```powershell
+$env:JAVA_HOME = 'C:\Program Files\Microsoft\jdk-21.0.10.7-hotspot'
+$env:PATH = 'C:\msys64\ucrt64\bin;' + $env:PATH
 ./scripts/build.ps1
-./scripts/run.ps1 -Seconds 3600
+./scripts/fetch-minecraft.ps1 -AcceptEula
+./scripts/fetch-soh.ps1
+./scripts/build-soh.ps1
+./scripts/setup-soh.ps1 -Rom 'C:\path\to\supported-OoT.z64'
+./scripts/run.ps1
 ```
 
-The runner launches the bridge hidden and the backend at 20 Hz. Launch patched
-SoH separately and set `gEnhancements.SteveBridge` to `1` in its console-variable
-configuration. Both use session `default`. Standalone commands are
-`build/bridge.exe default 3600` and `build/headless_mc.exe default 3600`.
-Exactly one daemon, one backend, and one frontend may use a session.
+Use `-AcceptEula` only after accepting the [Minecraft EULA](https://www.minecraft.net/eula). It writes `eula=true`; acceptance was explicitly provided for this workspace. ROMs and extracted archives are ignored by Git. The extractor reads the original ROM without modifying it. Both the US revision 2 and US GameCube Master Quest dumps found in Downloads have supported hashes. Pass both paths to `-Rom` to extract both sets of assets. There is no ROM download step.
 
-For Linux, configure a Release build with a compiler accepting `-std=c++26`:
+`run.ps1` launches the mapping owner and a memory-limited Minecraft process, waits for readiness, then opens SoH. Closing SoH sends the server `stop` so it saves normally. Logs live in `runtime/minecraft`; game configuration and saves live in `runtime/soh`. Use `-BackendOnly` to start the services for a separately launched frontend. Run only one frontend and one backend per session; close the previous session before restarting. All components must run in the same Windows user/security context.
 
-```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j4
+## Controls and game behavior
+
+| SoH input | Minecraft action |
+|---|---|
+| B | Mine with the pickaxe; otherwise attack/swing |
+| R | Use the offhand shield |
+| Hold A | Use held food or draw the bow |
+| Release A | Release the bow |
+| C-left / C-right | Previous / next hotbar slot |
+| Z | Supply the current lock-on target |
+
+The initial hotbar contains an iron pickaxe, iron sword, eight cooked beef, a bow and 64 arrows. A shield occupies the offhand. Minecraft's player data is saved with vanilla item-component codecs every five seconds and at shutdown in `bridge-world/steve-player.json`. Zelda damage is translated to Minecraft health; returned health drives Zelda's hearts. Respawn requests restore health and hunger.
+
+The backend uses a bounded flat arena with a bedrock floor and a stone mining target. The native cube has dynamic collision and disappears after the authoritative mining acknowledgement. Entering a different Zelda scene anchors the arena at the new player position and restores its test block. This is an item-logic bridge and a bounded interaction arena; it does not convert every Zelda surface or enemy into a Minecraft block or entity, provide full Minecraft terrain, or add a crafting interface. Vanilla Zelda collisions and animation-derived limb positions are retained before replacing render commands. Sword attack logic uses Minecraft entities within the backend arena when present.
+
+The override defaults on in this patched build when the backend is connected. Set `gEnhancements.SteveBridge` to `0` to disable it. Without fresh backend state, Link's normal renderer is used. SoH's normal controller mapping remains available; hotbar counts, selection, remaining durability and destruction stage are shown in the native overlay.
+
+## Native transport
+
+`src/bridge/protocol.hpp` specifies a 128-byte input and a 256-byte response, both aligned to 64 bytes. The two SPSC rings expose mapped slots directly. Acquire/release atomics transfer ownership; the daemon owns mapping lifecycle and updates a heartbeat without relaying or copying packets between rings. JNI exposes the same slots as direct byte buffers. Snapshot copies are made only for frontend interpolation and Java reads fields directly from the mapped input.
+
+The input carries transform, buttons and preserved press edges, target/lock-on, slot, scene, damage and respawn flags. The response carries vanilla numeric item registry IDs, components represented by damage/count/remaining durability, nine hotbar slots, hand/swing, health, destruction stage, eight audio events and a monotonic block-break acknowledgement. Transport version and size are checked. Exactly one producer and consumer own each ring. Full rings apply backpressure; unconsumed slots are never overwritten. Multiple button edges within a single Minecraft tick coalesce.
+
+Minecraft ticks at 20 Hz. Continuous arm poses interpolate one tick behind; inventories and events remain discrete. Stale input stops actions after 250 ms, stale responses fall back to Link, and a stalled session is released after two seconds. This relies on native lock-free atomics on the same machine and x64 ABI, rather than a portable network wire format. Windows cross-compiler interoperability is exercised by the GCC/JNI backend and MSVC frontend. POSIX mapping support is implemented but the full Linux integration has not been tested here.
+
+## Verification and resource budget
+
+```powershell
 ctest --test-dir build --output-on-failure
-./build/bridge default 3600 &
-./build/headless_mc default 3600
+./scripts/verify-minecraft.ps1
+./scripts/disk-budget.ps1
 ```
 
-Linux/POSIX and MSVC paths are implemented but not validated in this environment.
-On POSIX a forcibly killed daemon can leave `/dev/shm/zelda_steve_<session>` behind;
-remove only that specific stale session after all clients have exited. On Windows,
-close all processes holding a session before restarting its daemon.
+The deterministic separate-process harness (`headless_mc.exe`) exists only for transport regression tests. The production launcher uses the actual Fabric server. Native tests cover 100,000 concurrent ring transfers, wraparound/full queues, button edges, audio ordering, stale-state fallback and actor pose. The real-server test uses the same C API as SoH and verifies vanilla stone mining, drops, durability, shield pose, transferred damage, timed food use and bow release.
 
-## Transport and ownership
+A fresh Minecraft test measured 421,744,640 bytes peak working memory, 451,620,864 bytes peak private memory, and 150,070,577 bytes runtime storage. The supervisor enforces a 480,000,000-byte committed-memory Job Object limit, checks peak working memory against 500,000,000 bytes, and stops if runtime storage reaches 200,000,000 bytes. It launches without a window and kills its child on supervisor termination. The fixed spawn bypasses expensive vanilla spawn-region pre-generation.
 
-`src/bridge/protocol.hpp` defines a 64-byte input packet and a 256-byte response,
-both cache-line aligned with compile-time layout checks. Four bounded SPSC rings
-connect frontend → relay → backend and backend → relay → frontend. Acquire/release
-atomics publish slots without locks or heap allocations. `reserve`/`peek` expose
-mapped slots directly. **The relay copies each packet between rings**; the system
-does not promise end-to-end zero-copy. On full rings producers retry or drop a
-state sample; no consumer-owned slot is overwritten. Input edges survive 60 Hz
-to 20 Hz sampling. Multiple presses inside one tick coalesce.
+The entire parent workspace, including hidden Git history and caches, must remain below **5,000,000,000 bytes**. `disk-budget.ps1` audits that scope and warns at 4 GB. Release builds strip GCC executable symbols; SoH Release disables PDB generation and uses static dependencies. Pinned source revisions are fetched at depth one. Do not bundle an additional JDK or large world. Build/cache/runtime/native binaries and game assets are ignored. Keep the audit below the ceiling before downloading dependencies or rebuilding.
 
-The mapping validates session readiness, protocol version and structure size.
-Only same-machine, same-architecture, compatible compiler/standard-library ABIs
-are supported. Standard C++ does not itself guarantee process-shared atomics;
-the implementation relies on the native lock-free 32-bit atomics of Windows and
-POSIX target platforms. A version mismatch requires restarting every process.
+## Source map
 
-The frontend polls without blocking a game frame. Continuous arm pose is
-interpolated one tick behind; item IDs and inventories change discretely.
-Actions stop after 250 ms without fresh input/state, and the client releases a
-stalled session after two seconds. Audio events can be drained once using
-`Client::pop_audio()`; the bounded queue reports overflow with `audio_drops()`.
-No inventory data is extrapolated. Polling adds up to roughly 1 ms at the relay;
-no measured latency or throughput guarantee is claimed.
+- `src/bridge`: aligned protocol, mapping lifecycle and mapping-owner daemon.
+- `src/headless_mc/fabric`: pinned Fabric server mod, fixed-spawn mixins and direct-buffer Java adapter.
+- `src/headless_mc/jni.cpp`: native shared-memory JNI implementation.
+- `src/headless_mc/supervisor.cpp`: Windows process/memory/disk supervisor.
+- `src/soh_mod`: nonblocking C++ client, C actor API, procedural renderer and pinned SoH patch.
+- `scripts/soh-dependencies.json`: exact dependency commits for repeatable shallow fetches.
+- `tests`: deterministic transport tests and real-Minecraft C API verification.
 
-## Headless harness
-
-`src/headless_mc` has no JVM, game downloads, renderer, network stack or runtime
-asset dependencies. It models a nine-slot hotbar, tool durability, food consumption,
-bow use, shielding, and ten-stage mining of a regenerating test block within five
-blocks of the supplied target. Bridge-local item IDs: 1 pickaxe, 2 sword, 3 food,
-4 bow, 5 mined block. It does not simulate vanilla Minecraft physics, crafting,
-entities, persistence, complete inventory or registry metadata.
-
-The separate-process test drives inputs at approximately 60 Hz, runs the real
-relay and backend processes, and checks mining, durability, inventory and native
-actor pose. It also tests concurrent ring wraparound, full queues, short button
-edges, audio delivery, stale input and server-state fallback. Windows peak working
-set and private memory are checked against 500,000,000 bytes during the test.
-This measured test bound is not an OS-enforced production memory quota.
-
-## SoH integration
-
-Source reference: [HarbourMasters/Shipwright](https://github.com/HarbourMasters/Shipwright),
-commit `7be5a4feacd1db1474bec97bb3ba7ad08de89d28`. The ignored `vendor/shipwright`
-checkout is depth one and sparse. The supplied patch modifies
-`soh/src/overlays/actors/ovl_player_actor/z_player.c`: `Player_Update` samples input
-and `Player_Draw` selects the custom renderer when fresh backend state is present.
-The patch is already applied to the local reference checkout.
-
-For a separate full SoH source checkout:
-
-1. Verify the above commit and run `git apply --check <bridge>/src/soh_mod/shipwright.patch`,
-   then `git apply <bridge>/src/soh_mod/shipwright.patch`.
-2. After creation of SoH's `soh` CMake target, set `STEVE_BRIDGE_ROOT` to this
-   repository's absolute path and include `src/soh_mod/integration.cmake`.
-3. Build SoH with its documented dependencies and supported game assets.
-   Its documented asset/build requirements are in the upstream README and
-   `docs/BUILDING.md`. Full SoH and assets were not fetched or built here.
-4. Start the daemon/backend and enable `gEnhancements.SteveBridge`.
-
-The actor adapter draws six original colored boxes plus a placeholder held tool.
-B drives mine/attack, R blocks, A consumes/uses the selected item, and C-left/right
-cycle hotbar slots. Coordinates use 20 SoH units per block; angles use radians.
-This renderer is deliberately untextured and has no imported Steve skin or
-production skeleton resource. Animation comes from native rigid limb rotations.
-SoH movement/collisions remain governed by the player actor. Health and destruction
-stage reach the C API, but are not yet wired to SoH's health HUD, scene destruction
-or collision logic. Audio reaches the native client queue but is not yet played
-by SoH. The renderer patch has been checked against source, not compiled or
-visually playtested inside the game.
-
-## Remaining work for the requested complete system
-
-* A real Minecraft runtime adapter must translate version-specific registry IDs,
-  server-player actions and authoritative world/inventory state into these rings.
-  The supplied harness is a replacement for testing that interface only.
-* Build and playtest the in-tree adapter with complete SoH dependencies and game
-  assets; validate matrices, transparency, cutscenes, held-item geometry and limb
-  attachment/collision positions when bypassing Link's normal draw routine.
-* Connect scene block interactions, health and audio to actual SoH gameplay and
-  provide a finished Steve skin/skeleton/asset package.
-* Benchmark sustained load and enforce production process memory limits.
-
-## Storage and language limits
-
-All build outputs, game assets, runtime binaries and vendor sources are ignored.
-`scripts/disk-budget.ps1` includes hidden Git files across the entire parent
-workspace and fails at 5,000,000,000 logical bytes. With `-CleanObjects`, it removes
-only `.o`/`.obj` files inside this project's verified `build/CMakeFiles` path when
-the workspace reaches 4,000,000,000 bytes. Build scripts check before and after
-builds. These checks cannot prevent unrelated processes from filling the directory
-between audits. Keep any future dependency fetch below the remaining budget.
-Release executables are linker-stripped; Windows GCC executables link runtimes
-statically so no DLL distribution is required.
-
-All bridge C++ targets explicitly use `-std=c++26` or `/std:c++latest`, with warnings
-as errors. `std::expected` and lock-free atomics are used. GCC 14 accepts C++26 mode
-but does not implement the full C++26 standard; reflection and contracts are not
-required or claimed. The upstream C actor hook remains C for ABI compatibility.
+The SoH patch also repairs the pinned upstream extractor's ROM-bytes API mismatch and removes Release debug-symbol generation. The model is generated from native cubes; no external Steve mesh, texture pack, or animation archive is needed.

@@ -8,6 +8,8 @@ if(MSVC)
   string(REGEX REPLACE "[-/]std:c\\+\\+20" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   set(CMAKE_CXX_STANDARD 26)
   set_target_properties(soh PROPERTIES CXX_STANDARD 26 CXX_STANDARD_REQUIRED YES)
+  # MSVC LTCG serializes large intermediate ASTs; keep /O2 within the disk budget.
+  set_target_properties(soh PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE FALSE)
 endif()
 add_subdirectory("${STEVE_BRIDGE_ROOT}" "${CMAKE_BINARY_DIR}/steve-bridge")
 target_sources(soh PRIVATE "${STEVE_BRIDGE_ROOT}/src/soh_mod/SteveActor.c")

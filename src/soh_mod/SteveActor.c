@@ -4,16 +4,55 @@
 #include <libultraship/bridge/consolevariablebridge.h>
 #include <string.h>
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 static StevePose sPose;
 static int sConnected;
 static uint32_t sSlot;
-int SteveActor_IsReady(void) { return sConnected && CVarGetInteger("gEnhancements.SteveBridge",1); }
+int SteveActor_IsReady(void) { return sConnected && CVarGetInteger("gEnhancements.SteveBridge",1) && SteveBridge_GetPose(&sPose); }
 static PlayState* sPlay;
 static Vec3f sOrigin;
 static uint64_t sLastTick, sBlockEvent;
 static int sLastHealth, sBlockAlive;
 static DynaPolyActor sBlock;
+static int sTestMode=-1, sTestFrame, sRenderedFrames;
+static uint32_t sTestPick, sTestFood, sTestBow, sTestArrows;
+static int sTestShield, sTestDamage;
+static void SteveActor_TestInput(SteveInput* packet) {
+    if (sTestMode < 0) sTestMode=getenv("STEVE_IN_GAME_TEST") != NULL;
+    if (!sTestMode) return;
+    packet->buttons=0; packet->locked=0; packet->slot=0;
+    if (!sConnected) { packet->flags=1; return; }
+    sTestFrame++;
+    if (sTestFrame==175) sTestShield=sPose.hand==3;
+    if (sTestFrame==210) sTestDamage=sPose.health<=16.1f;
+    if (sTestFrame==1) {
+        packet->flags=1;
+        sTestPick=sPose.hotbar[0].durability; sTestFood=sPose.hotbar[2].count;
+        sTestBow=sPose.hotbar[3].durability; sTestArrows=sPose.hotbar[8].count;
+    }
+    if (sTestFrame>=100 && sTestFrame<160) packet->buttons=2;
+    else if (sTestFrame>=160 && sTestFrame<180) packet->buttons=8;
+    else if (sTestFrame==190) packet->damage=4;
+    else if (sTestFrame>=220 && sTestFrame<300) {packet->slot=2;packet->buttons=1;}
+    else if (sTestFrame>=310 && sTestFrame<350) {packet->slot=3;packet->buttons=1;}
+    else if (sTestFrame>=350) packet->slot=3;
+    if (sTestFrame==380) {
+        FILE* log=fopen("steve-in-game-test.log","w");
+        int passed=sRenderedFrames>20 && !sBlockAlive && sTestShield && sTestDamage &&
+            sPose.hotbar[0].durability==sTestPick-1 && sPose.hotbar[2].count==sTestFood-1 &&
+            sPose.hotbar[3].durability==sTestBow-1 && sPose.hotbar[8].count==sTestArrows-1;
+        if (log) {
+            fprintf(log,"%s native SoH actor: rendered=%d tick=%llu mining_ack=%llu block_alive=%d pickaxe=%u food=%u bow=%u arrows=%u health=%.2f\n",
+                passed?"PASS":"FAIL",sRenderedFrames,(unsigned long long)sPose.tick,
+                (unsigned long long)sPose.block_event,sBlockAlive,sPose.hotbar[0].durability,
+                sPose.hotbar[2].count,sPose.hotbar[3].durability,sPose.hotbar[8].count,sPose.health);
+            fclose(log);
+        }
+        if (getenv("STEVE_IN_GAME_TEST_EXIT")) exit(passed?0:2);
+    }
+}
 static Vec3s sBlockVertices[] = {
     {-10,-10,-10},{10,-10,-10},{10,10,-10},{-10,10,-10},
     {-10,-10,10},{10,-10,10},{10,10,10},{-10,10,10}
@@ -97,6 +136,7 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
         packet.ty=(sOrigin.y+10)/20.0f;
         packet.tz=(sOrigin.z+40)/20.0f;
     }
+    SteveActor_TestInput(&packet);
     sConnected = SteveBridge_Frame(&packet, &sPose);
     if (sConnected && sPose.tick != sLastTick) {
         int sound;
@@ -157,6 +197,7 @@ static void SteveBox(PlayState* play,float x,float y,float z,float w,float h,flo
 int SteveActor_Draw(Actor* actor, PlayState* play) {
     if (!sConnected || !CVarGetInteger("gEnhancements.SteveBridge",1)) return 0;
     if (!SteveBridge_GetPose(&sPose)) return 0;
+    sRenderedFrames++;
     OPEN_DISPS(play->state.gfxCtx);
     Gfx_SetupDL_25Opa(play->state.gfxCtx);
     gSPClearGeometryMode(POLY_OPA_DISP++,G_LIGHTING | G_CULL_BACK);

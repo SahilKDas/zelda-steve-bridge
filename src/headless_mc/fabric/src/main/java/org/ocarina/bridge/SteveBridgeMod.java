@@ -110,7 +110,7 @@ public final class SteveBridgeMod implements ModInitializer {
         double py = Math.max(0, Math.min(4, y - originY));
         double pz = Math.max(-6, Math.min(6, z - originZ));
         player.refreshPositionAndAngles(px + 0.5, 65 + py, pz + 0.5,
-                (float)Math.toDegrees(yaw), (float)Math.toDegrees(pitch));
+                -(float)Math.toDegrees(yaw), (float)Math.toDegrees(pitch));
         if (Float.isFinite(damage) && damage > 0) player.damage(world, world.getDamageSources().generic(), Math.min(damage, 20));
         if ((flags & 1) != 0) { player.setHealth(20); player.getHungerManager().setFoodLevel(12); flags=0; }
         hand = 0;
