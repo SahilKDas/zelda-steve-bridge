@@ -10,6 +10,10 @@ extern "C" int SteveBridge_Frame(const SteveInput* input,StevePose* pose) {
     packet.buttons=input->buttons; packet.locked=input->locked; packet.selected_slot=input->slot;
     packet.damage=input->damage; packet.scene=input->scene; packet.flags=input->flags; packet.health_capacity=input->health_capacity;
     client.frame(packet);
+    return SteveBridge_GetPose(pose);
+}
+extern "C" int SteveBridge_GetPose(StevePose* pose) {
+    if (!pose) return 0;
     auto p=client.pose(); const auto& state=client.state();
     *pose={};
     pose->right_arm=p.right_arm; pose->left_arm=p.left_arm;

@@ -1,0 +1,52 @@
+[
+  {
+    "name": "dr_libs",
+    "url": "https://github.com/mackron/dr_libs.git",
+    "commit": "da35f9d6c7374a95353fd1df1d394d44ab66cf01"
+  },
+  {
+    "name": "imgui",
+    "url": "https://github.com/ocornut/imgui.git",
+    "commit": "4806a1924ff6181180bf5e4b8b79ab4394118875"
+  },
+  {
+    "name": "libgfxd",
+    "url": "https://github.com/glankk/libgfxd.git",
+    "commit": "008f73dca8ebc9151b205959b17773a19c5bd0da"
+  },
+  {
+    "name": "monocypher",
+    "url": "https://github.com/LoupVaillant/Monocypher.git",
+    "commit": "0d85f98c9d9b0227e42cf795cb527dff372b40a4"
+  },
+  {
+    "name": "prism",
+    "url": "https://github.com/KiritoDv/prism-processor.git",
+    "commit": "1de054450e7b3c5f777d2e3dfcb228ad120c329d"
+  },
+  {
+    "name": "stormlib",
+    "url": "https://github.com/ladislav-zezula/StormLib.git",
+    "commit": "28c9b4be3f23c6b3a5ff55cacac7dbe5b9cdc4fc"
+  },
+  {
+    "name": "threadpool",
+    "url": "https://github.com/bshoshany/thread-pool.git",
+    "commit": "097aa718f25d44315cadb80b407144ad455ee4f9"
+  },
+  {
+    "name": "tinyxml2",
+    "url": "https://github.com/leethomason/tinyxml2.git",
+    "commit": "321ea883b7190d4e85cae5512a12e5eaa8f8731f"
+  },
+  {
+    "name": "yaml-cpp",
+    "url": "https://github.com/jbeder/yaml-cpp.git",
+    "commit": "56e3bb550c91fd7005566f19c079cb7a503223cf"
+  },
+  {
+    "name": "zlib",
+    "url": "https://github.com/madler/zlib.git",
+    "commit": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf"
+  }
+]

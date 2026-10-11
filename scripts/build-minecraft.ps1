@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$env:JAVA_HOME = 'C:\Program Files\Microsoft\jdk-21.0.10.7-hotspot'
+if (-not $env:JAVA_HOME) { throw 'Set JAVA_HOME to an installed Java 21 JDK' }
 $env:GRADLE_USER_HOME = "$root/cache/gradle-home"
 & "$PSScriptRoot/disk-budget.ps1"
 & "$root/cache/gradle-9.2.1/bin/gradle.bat" -p "$root/src/headless_mc/fabric" build --no-daemon --console=plain

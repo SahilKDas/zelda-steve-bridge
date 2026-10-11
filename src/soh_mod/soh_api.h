@@ -20,6 +20,7 @@ typedef struct StevePose {
     SteveItem hotbar[9];
 } StevePose;
 int SteveBridge_Frame(const SteveInput* input, StevePose* pose);
+int SteveBridge_GetPose(StevePose* pose);
 int SteveBridge_PopAudio(void);
 void SteveBridge_Disconnect(void);
 #ifdef __cplusplus

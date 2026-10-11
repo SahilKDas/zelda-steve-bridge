@@ -1,6 +1,11 @@
 package org.ocarina.bridge;
 
 import com.mojang.authlib.GameProfile;
+import com.mojang.serialization.JsonOps;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -16,6 +21,7 @@ import net.minecraft.network.packet.Packet;
 import net.minecraft.network.packet.c2s.common.SyncedClientOptions;
 import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
 import net.minecraft.registry.Registries;
+import net.minecraft.registry.RegistryOps;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ConnectedClientData;
 import net.minecraft.server.network.ServerPlayNetworkHandler;
@@ -26,6 +32,10 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.GameMode;
+import net.minecraft.util.WorldSavePath;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayDeque;
@@ -44,11 +54,12 @@ public final class SteveBridgeMod implements ModInitializer {
     private float damage, miningProgress;
     private BlockPos mining;
     private int miningBlockId;
+    private Path playerFile;
     private final ArrayDeque<Integer> sounds = new ArrayDeque<>();
 
     @Override public void onInitialize() {
         ServerLifecycleEvents.SERVER_STARTED.register(this::start);
-        ServerLifecycleEvents.SERVER_STOPPING.register(server -> NativeBridge.close());
+        ServerLifecycleEvents.SERVER_STOPPING.register(server -> { savePlayer(server); NativeBridge.close(); });
         ServerTickEvents.END_SERVER_TICK.register(this::tick);
     }
     private void start(MinecraftServer server) {
@@ -69,6 +80,8 @@ public final class SteveBridgeMod implements ModInitializer {
         player.getInventory().setStack(8, new ItemStack(Items.ARROW, 64));
         player.equipStack(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
         player.getHungerManager().setFoodLevel(12);
+        playerFile = server.getSavePath(WorldSavePath.ROOT).resolve("steve-player.json");
+        loadPlayer(server);
         // Bound the generated world to a single small, persistent arena.
         for (int bx = -8; bx <= 8; bx++) for (int bz = -8; bz <= 8; bz++)
             world.setBlockState(new BlockPos(bx, 64, bz), Blocks.BEDROCK.getDefaultState());
@@ -141,6 +154,36 @@ public final class SteveBridgeMod implements ModInitializer {
             if (stack.isEmpty()) drop.discard();
         }
         publish();
+        if (tick % 100 == 0) savePlayer(server);
+    }
+    private void loadPlayer(MinecraftServer server) {
+        if (!Files.exists(playerFile)) return;
+        try {
+            JsonObject data = JsonParser.parseString(Files.readString(playerFile)).getAsJsonObject();
+            var ops = RegistryOps.of(JsonOps.INSTANCE, server.getRegistryManager());
+            JsonArray items = data.getAsJsonArray("inventory");
+            for (int i=0;i<Math.min(items.size(),36);i++)
+                player.getInventory().setStack(i, ItemStack.OPTIONAL_CODEC.parse(ops,items.get(i)).getOrThrow());
+            player.equipStack(EquipmentSlot.OFFHAND, ItemStack.OPTIONAL_CODEC.parse(ops,data.get("offhand")).getOrThrow());
+            player.setHealth(Math.max(0,Math.min(20,data.get("health").getAsFloat())));
+            player.getHungerManager().setFoodLevel(Math.max(0,Math.min(20,data.get("food").getAsInt())));
+        } catch (Exception e) { LOG.error("Cannot load persisted bridge player; using initial equipment",e); }
+    }
+    private void savePlayer(MinecraftServer server) {
+        if (player == null || playerFile == null) return;
+        try {
+            var ops = RegistryOps.of(JsonOps.INSTANCE, server.getRegistryManager());
+            JsonObject data = new JsonObject();
+            JsonArray items = new JsonArray();
+            for (int i=0;i<36;i++) items.add(ItemStack.OPTIONAL_CODEC.encodeStart(ops,player.getInventory().getStack(i)).getOrThrow());
+            data.add("inventory",items);
+            data.add("offhand",ItemStack.OPTIONAL_CODEC.encodeStart(ops,player.getOffHandStack()).getOrThrow());
+            data.addProperty("health",player.getHealth());
+            data.addProperty("food",player.getHungerManager().getFoodLevel());
+            Path temporary = playerFile.resolveSibling("steve-player.json.tmp");
+            Files.writeString(temporary,new GsonBuilder().create().toJson(data));
+            Files.move(temporary,playerFile,StandardCopyOption.REPLACE_EXISTING);
+        } catch (Exception e) { LOG.error("Cannot save bridge player",e); }
     }
     private void read(ByteBuffer p) {
         sequence = p.getLong(0); inputTime = p.getLong(8);

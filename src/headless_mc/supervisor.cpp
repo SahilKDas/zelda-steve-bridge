@@ -44,19 +44,22 @@ int main(int argc,char** argv) try {
     SECURITY_ATTRIBUTES security{sizeof(security),nullptr,TRUE};
     HANDLE log=CreateFileA((fs::path(runtime)/"server-console.log").string().c_str(),GENERIC_WRITE,FILE_SHARE_READ,
                           &security,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
-    HANDLE input=CreateFileA("NUL",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,&security,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+    HANDLE input=nullptr, inputWrite=nullptr;
+    if(!CreatePipe(&input,&inputWrite,&security,0)) { CloseHandle(log); CloseHandle(job); throw std::runtime_error("server input pipe failed"); }
+    SetHandleInformation(inputWrite,HANDLE_FLAG_INHERIT,0);
     STARTUPINFOA si{}; si.cb=sizeof(si); si.dwFlags=STARTF_USESTDHANDLES; si.hStdOutput=log; si.hStdError=log; si.hStdInput=input;
     PROCESS_INFORMATION pi{};
     if(!CreateProcessA(java.c_str(),command.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW|CREATE_SUSPENDED,nullptr,runtime.c_str(),&si,&pi)) {
-        CloseHandle(log); CloseHandle(input); CloseHandle(job); throw std::runtime_error("Java process launch failed");
+        CloseHandle(log); CloseHandle(input); CloseHandle(inputWrite); CloseHandle(job); throw std::runtime_error("Java process launch failed");
     }
     CloseHandle(log); CloseHandle(input);
-    if(!AssignProcessToJobObject(job,pi.hProcess)) { TerminateProcess(pi.hProcess,1); CloseHandle(pi.hThread); CloseHandle(pi.hProcess); CloseHandle(job); throw std::runtime_error("Java job assignment failed"); }
+    if(!AssignProcessToJobObject(job,pi.hProcess)) { TerminateProcess(pi.hProcess,1); CloseHandle(inputWrite); CloseHandle(pi.hThread); CloseHandle(pi.hProcess); CloseHandle(job); throw std::runtime_error("Java job assignment failed"); }
     ResumeThread(pi.hThread); CloseHandle(pi.hThread);
     SIZE_T peakWorking=0,peakPrivate=0;
     bool violation=false;
     for(int elapsed=0;elapsed<seconds;++elapsed) {
         if(WaitForSingleObject(pi.hProcess,1000)==WAIT_OBJECT_0) break;
+        if(fs::exists(fs::path(runtime)/"stop.request")) break;
         PROCESS_MEMORY_COUNTERS_EX memory{};
         if(GetProcessMemoryInfo(pi.hProcess,reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory),sizeof(memory))) {
             peakWorking=std::max(peakWorking,memory.PeakWorkingSetSize); peakPrivate=std::max(peakPrivate,memory.PrivateUsage);
@@ -67,6 +70,12 @@ int main(int argc,char** argv) try {
     }
     DWORD code=0;
     GetExitCodeProcess(pi.hProcess,&code);
+    if(code==STILL_ACTIVE && !violation) {
+        DWORD written=0;
+        WriteFile(inputWrite,"stop\n",5,&written,nullptr);
+        if(WaitForSingleObject(pi.hProcess,15000)==WAIT_OBJECT_0) GetExitCodeProcess(pi.hProcess,&code);
+    }
+    CloseHandle(inputWrite);
     if(code==STILL_ACTIVE) { TerminateJobObject(job,violation?1:0); WaitForSingleObject(pi.hProcess,2000); code=violation?1:0; }
     CloseHandle(pi.hProcess); CloseHandle(job);
     std::cout<<"Minecraft peak working bytes="<<peakWorking<<" peak private bytes="<<peakPrivate<<" runtime bytes="<<bytes(runtime)<<'\n';

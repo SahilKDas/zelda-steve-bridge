@@ -1,4 +1,4 @@
-param([switch]$ConfigureOnly)
+param([switch]$ConfigureOnly, [int]$Jobs = 8)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 & "$PSScriptRoot/disk-budget.ps1" -CleanObjects
@@ -15,12 +15,18 @@ $env:VCPKG_DEFAULT_BINARY_CACHE = "$root/cache/vcpkg-packages"
 $env:VCPKG_MAX_CONCURRENCY = '4'
 $env:VCPKG_ROOT = "$root/vendor/vcpkg"
 New-Item -ItemType Directory -Force -Path $env:VCPKG_DOWNLOADS,$env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+$sources = @()
+foreach ($entry in (Get-Content -LiteralPath "$PSScriptRoot/soh-dependencies.json" -Raw | ConvertFrom-Json)) {
+    $path = "$root/build/soh/_deps/$($entry.name)-src"
+    if (-not (Test-Path -LiteralPath "$path/.git")) { throw 'Run fetch-soh.ps1 first to obtain shallow, pinned dependencies' }
+    $sources += "-DFETCHCONTENT_SOURCE_DIR_$($entry.name.ToUpper())=$path"
+}
 & $cmakePath -S "$root/vendor/shipwright" -B "$root/build/soh" -G Ninja -DCMAKE_BUILD_TYPE=Release `
     -DSTEVE_BRIDGE_ROOT="$root" -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DSTEVE_BUILD_JNI=OFF `
-    -DCMAKE_CONFIGURATION_TYPES=Release -DENABLE_SCRIPTING=OFF -DVCPKG_ROOT="$root/vendor/vcpkg"
+    -DCMAKE_CONFIGURATION_TYPES=Release -DENABLE_SCRIPTING=OFF -DVCPKG_ROOT="$root/vendor/vcpkg" @sources
 if ($LASTEXITCODE -ne 0) { throw 'SoH configure failed' }
 if (-not $ConfigureOnly) {
-    & $cmakePath --build "$root/build/soh" --target soh GenerateSohOtr -j 4
+    & $cmakePath --build "$root/build/soh" --target soh GenerateSohOtr soh-torch -j $Jobs
     if ($LASTEXITCODE -ne 0) { throw 'SoH build failed' }
 }
 & "$PSScriptRoot/disk-budget.ps1"

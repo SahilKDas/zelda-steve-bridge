@@ -8,7 +8,7 @@
 static StevePose sPose;
 static int sConnected;
 static uint32_t sSlot;
-int SteveActor_IsReady(void) { return sConnected && CVarGetInteger("gEnhancements.SteveBridge",0); }
+int SteveActor_IsReady(void) { return sConnected && CVarGetInteger("gEnhancements.SteveBridge",1); }
 static PlayState* sPlay;
 static Vec3f sOrigin;
 static uint64_t sLastTick, sBlockEvent;
@@ -57,7 +57,7 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
     Player* player = (Player*)actor;
     Input* input = &play->state.input[0];
     SteveInput packet = {0};
-    if (!CVarGetInteger("gEnhancements.SteveBridge", 0)) { if (sPlay) SteveActor_Reset(sPlay); return; }
+    if (!CVarGetInteger("gEnhancements.SteveBridge", 1)) { if (sPlay) SteveActor_Reset(sPlay); return; }
     if (sPlay != play) {
         sPlay=play; sOrigin=actor->world.pos; sLastHealth=gSaveContext.health;
         sLastTick=0; sBlockEvent=0; sBlockAlive=0;
@@ -155,7 +155,8 @@ static void SteveBox(PlayState* play,float x,float y,float z,float w,float h,flo
     CLOSE_DISPS(play->state.gfxCtx);
 }
 int SteveActor_Draw(Actor* actor, PlayState* play) {
-    if (!sConnected || !CVarGetInteger("gEnhancements.SteveBridge",0)) return 0;
+    if (!sConnected || !CVarGetInteger("gEnhancements.SteveBridge",1)) return 0;
+    if (!SteveBridge_GetPose(&sPose)) return 0;
     OPEN_DISPS(play->state.gfxCtx);
     Gfx_SetupDL_25Opa(play->state.gfxCtx);
     gSPClearGeometryMode(POLY_OPA_DISP++,G_LIGHTING | G_CULL_BACK);
