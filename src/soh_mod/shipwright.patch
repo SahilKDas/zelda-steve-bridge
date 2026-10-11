@@ -1,0 +1,29 @@
+diff --git a/soh/src/overlays/actors/ovl_player_actor/z_player.c b/soh/src/overlays/actors/ovl_player_actor/z_player.c
+index 09dfb52..2e20c15 100644
+--- a/soh/src/overlays/actors/ovl_player_actor/z_player.c
++++ b/soh/src/overlays/actors/ovl_player_actor/z_player.c
+@@ -6,6 +6,8 @@
+ 
+ #include <libultraship/libultra.h>
+ #include "global.h"
++void SteveActor_Update(Actor* actor, PlayState* play);
++int SteveActor_Draw(Actor* actor, PlayState* play);
+ 
+ #include "overlays/actors/ovl_Bg_Heavy_Block/z_bg_heavy_block.h"
+ #include "overlays/actors/ovl_Door_Shutter/z_door_shutter.h"
+@@ -12192,6 +12194,7 @@ static Vec3f sDogSpawnOffset = { 0.0f, 0.0f, -30.0f };
+ s32 Player_UpdateNoclip(Player* this, PlayState* play);
+ 
+ void Player_Update(Actor* thisx, PlayState* play) {
++    SteveActor_Update(thisx, play);
+     static Vec3f sDogSpawnPos;
+     Player* this = (Player*)thisx;
+     s32 dogParams;
+@@ -12430,6 +12433,7 @@ void Player_DrawGameplay(PlayState* play, Player* this, s32 lod, Gfx* cullDList,
+ }
+ 
+ void Player_Draw(Actor* thisx, PlayState* play2) {
++    if (SteveActor_Draw(thisx, play2)) return;
+     PlayState* play = play2;
+     Player* this = (Player*)thisx;
+ 

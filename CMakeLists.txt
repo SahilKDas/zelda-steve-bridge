@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 project(zelda_steve_bridge LANGUAGES CXX)
 enable_testing()
-add_library(bridge_core src/bridge/mapping.cpp src/soh_mod/client.cpp)
+add_library(bridge_core src/bridge/mapping.cpp src/soh_mod/client.cpp src/soh_mod/soh_api.cpp)
 target_include_directories(bridge_core PUBLIC src)
 if(MSVC)
   target_compile_options(bridge_core PUBLIC /std:c++latest /W4 /WX)
