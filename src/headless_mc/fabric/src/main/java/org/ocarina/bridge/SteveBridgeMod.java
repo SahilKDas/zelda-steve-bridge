@@ -72,7 +72,7 @@ public final class SteveBridgeMod implements ModInitializer {
         // Bound the generated world to a single small, persistent arena.
         for (int bx = -8; bx <= 8; bx++) for (int bz = -8; bz <= 8; bz++)
             world.setBlockState(new BlockPos(bx, 64, bz), Blocks.BEDROCK.getDefaultState());
-        world.setBlockState(new BlockPos(0, 66, 2), Blocks.STONE.getDefaultState());
+        world.setBlockState(new BlockPos(0, 65, 2), Blocks.STONE.getDefaultState());
         LOG.info("STEVE_BRIDGE_READY Minecraft=1.21.11 nativeProtocol=2");
     }
     private void tick(MinecraftServer server) {
@@ -153,14 +153,14 @@ public final class SteveBridgeMod implements ModInitializer {
         flags |= p.getInt(72);
         if (scene != newScene) {
             scene = newScene; originX = x; originY = y; originZ = z; abortMining();
-            world.setBlockState(new BlockPos(0,66,2),Blocks.STONE.getDefaultState());
+            world.setBlockState(new BlockPos(0,65,2),Blocks.STONE.getDefaultState());
         }
         if (!Float.isFinite(x+y+z+yaw+pitch+tx+ty+tz)) { buttons = 0; pressed = 0; }
     }
     private void mine() {
         BlockPos target;
         if (locked != 0) target = BlockPos.ofFloored(tx-originX+0.5, ty-originY+65, tz-originZ+0.5);
-        else target = new BlockPos(0, 66, 2); // Arena block when Zelda has no actor target.
+        else target = new BlockPos(0, 65, 2); // Arena block when Zelda has no actor target.
         if (player.squaredDistanceTo(target.toCenterPos()) > 25 || world.getBlockState(target).isAir()) { abortMining(); return; }
         if (!target.equals(mining)) {
             abortMining(); mining = target;

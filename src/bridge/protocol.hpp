@@ -46,7 +46,9 @@ static_assert(std::atomic<std::uint32_t>::is_always_lock_free);
 // Same architecture/compiler ABI is required; this is not a network wire format.
 template<class T, std::uint32_t N=64> struct alignas(64) Ring {
     alignas(64) std::atomic<std::uint32_t> write{0};
+    std::array<std::byte,60> write_padding{};
     alignas(64) std::atomic<std::uint32_t> read{0};
+    std::array<std::byte,60> read_padding{};
     alignas(64) std::array<T,N> slots{};
     T* reserve() noexcept {
         auto w=write.load(std::memory_order_relaxed);
@@ -63,7 +65,9 @@ template<class T, std::uint32_t N=64> struct alignas(64) Ring {
 struct alignas(64) Shared {
     std::atomic<std::uint32_t> ready{0};
     std::uint32_t protocol{version}, bytes{sizeof(Shared)};
+    std::array<std::byte,52> header_padding{};
     alignas(64) std::atomic<std::uint64_t> heartbeat_ns{0};
+    std::array<std::byte,56> heartbeat_padding{};
     Ring<OotToMcPacket> to_backend;
     Ring<McToOotPacket> to_frontend;
 };

@@ -1,17 +1,107 @@
+diff --git a/CMake/DefaultCXX.cmake b/CMake/DefaultCXX.cmake
+index 6ed89d9e..957e0a21 100644
+--- a/CMake/DefaultCXX.cmake
++++ b/CMake/DefaultCXX.cmake
+@@ -9,8 +9,8 @@ if(MSVC)
+     set_target_properties("${PROPS_TARGET}" PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+     set_config_specific_property("DEFAULT_CXX_EXCEPTION_HANDLING" "/EHsc")
+     if (CMAKE_C_COMPILER_LAUNCHER MATCHES "ccache|sccache")
+-        set_config_specific_property("DEFAULT_CXX_DEBUG_INFORMATION_FORMAT" "/Z7")
++        set_config_specific_property("DEFAULT_CXX_DEBUG_INFORMATION_FORMAT" "$<$<CONFIG:Debug>:/Z7>")
+     else()
+-        set_config_specific_property("DEFAULT_CXX_DEBUG_INFORMATION_FORMAT" "/Zi")
++        set_config_specific_property("DEFAULT_CXX_DEBUG_INFORMATION_FORMAT" "$<$<CONFIG:Debug>:/Zi>")
+     endif()
+-endif()
+\ No newline at end of file
++endif()
+diff --git a/soh/CMakeLists.txt b/soh/CMakeLists.txt
+index f356d214..ee7458a3 100644
+--- a/soh/CMakeLists.txt
++++ b/soh/CMakeLists.txt
+@@ -460,7 +460,7 @@ if(MSVC)
+                 /FORCE:MULTIPLE
+             >
+             /MANIFEST:NO;
+-            /DEBUG;
++            $<$<CONFIG:Debug>:/DEBUG>;
+             /SUBSYSTEM:WINDOWS
+         )
+     elseif("${CMAKE_VS_PLATFORM_NAME}" STREQUAL "Win32")
+@@ -475,7 +475,7 @@ if(MSVC)
+                 /FORCE:MULTIPLE
+             >
+             /MANIFEST:NO;
+-            /DEBUG;
++            $<$<CONFIG:Debug>:/DEBUG>;
+             /SUBSYSTEM:WINDOWS
+         )
+     endif()
+@@ -803,3 +803,7 @@ wut_create_wuhb(${PROJECT_NAME}
+ INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/soh.rpx ${CMAKE_CURRENT_BINARY_DIR}/soh.wuhb DESTINATION . COMPONENT ship)
+ 
+ endif()
++
++if(DEFINED STEVE_BRIDGE_ROOT)
++  include("${STEVE_BRIDGE_ROOT}/src/soh_mod/integration.cmake")
++endif()
+diff --git a/soh/assets/tools/torch-cli/main.cpp b/soh/assets/tools/torch-cli/main.cpp
+index bc2a3d14..c49c68af 100644
+--- a/soh/assets/tools/torch-cli/main.cpp
++++ b/soh/assets/tools/torch-cli/main.cpp
+@@ -8,6 +8,8 @@
+ #include <cstdio>
+ #include <cstdlib>
+ #include <filesystem>
++#include <fstream>
++#include <iterator>
+ #include <string>
+ #include <vector>
+ 
+@@ -98,7 +100,10 @@ int main(int argc, char** argv) {
+ 
+     for (const auto& rom : roms) {
+         // A fresh extraction per ROM; torch names the archive from config.yml.
+-        const std::string archive = SohTorch::Extract(rom, src, dest, version, nullptr);
++        std::ifstream input(rom, std::ios::binary);
++        if (!input) { fprintf(stderr, "cannot read %s\n", rom.c_str()); return 1; }
++        std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), {});
++        const std::string archive = SohTorch::Extract(std::move(bytes), src, dest, version, nullptr);
+         if (archive.empty()) {
+             fprintf(stderr, "failed to extract %s\n", rom.c_str());
+             return 1;
+diff --git a/soh/src/code/z_play.c b/soh/src/code/z_play.c
+index 729edd0e..f5f19671 100644
+--- a/soh/src/code/z_play.c
++++ b/soh/src/code/z_play.c
+@@ -194,10 +194,12 @@ Gfx* Play_SetFog(PlayState* play, Gfx* gfx) {
+                        play->lightCtx.fogNear, 1000);
+ }
+ 
++void SteveActor_Reset(PlayState* play);
+ void Play_Destroy(GameState* thisx) {
+     PlayState* play = (PlayState*)thisx;
+     Player* player = GET_PLAYER(play);
+ 
++    SteveActor_Reset(play);
+     GameInteractor_ExecuteOnPlayDestroy();
+ 
+     play->state.gfxCtx->callback = NULL;
 diff --git a/soh/src/overlays/actors/ovl_player_actor/z_player.c b/soh/src/overlays/actors/ovl_player_actor/z_player.c
-index 09dfb52..2e20c15 100644
+index 09dfb520..822ea9f6 100644
 --- a/soh/src/overlays/actors/ovl_player_actor/z_player.c
 +++ b/soh/src/overlays/actors/ovl_player_actor/z_player.c
-@@ -6,6 +6,8 @@
+@@ -6,6 +6,9 @@
  
  #include <libultraship/libultra.h>
  #include "global.h"
 +void SteveActor_Update(Actor* actor, PlayState* play);
 +int SteveActor_Draw(Actor* actor, PlayState* play);
++int SteveActor_IsReady(void);
  
  #include "overlays/actors/ovl_Bg_Heavy_Block/z_bg_heavy_block.h"
  #include "overlays/actors/ovl_Door_Shutter/z_door_shutter.h"
-@@ -12192,6 +12194,7 @@ static Vec3f sDogSpawnOffset = { 0.0f, 0.0f, -30.0f };
+@@ -12192,6 +12195,7 @@ static Vec3f sDogSpawnOffset = { 0.0f, 0.0f, -30.0f };
  s32 Player_UpdateNoclip(Player* this, PlayState* play);
  
  void Player_Update(Actor* thisx, PlayState* play) {
@@ -19,11 +109,31 @@ index 09dfb52..2e20c15 100644
      static Vec3f sDogSpawnPos;
      Player* this = (Player*)thisx;
      s32 dogParams;
-@@ -12430,6 +12433,7 @@ void Player_DrawGameplay(PlayState* play, Player* this, s32 lod, Gfx* cullDList,
+@@ -12429,7 +12433,7 @@ void Player_DrawGameplay(PlayState* play, Player* this, s32 lod, Gfx* cullDList,
+     CLOSE_DISPS(play->state.gfxCtx);
  }
  
- void Player_Draw(Actor* thisx, PlayState* play2) {
-+    if (SteveActor_Draw(thisx, play2)) return;
+-void Player_Draw(Actor* thisx, PlayState* play2) {
++static void Player_DrawLink(Actor* thisx, PlayState* play2) {
      PlayState* play = play2;
      Player* this = (Player*)thisx;
  
+@@ -16612,3 +16616,17 @@ void Player_StartTalking(PlayState* play, Actor* actor) {
+     F(sHeldItemButtonIsHeldDown)
+ 
+ SHIP_SAVESTATE_DEFINE(Player, PLAYER_SHIP_SAVESTATE_FIELDS)
++
++/* Keep vanilla post-limb collision/focus updates while discarding Link's render commands. */
++void Player_Draw(Actor* thisx, PlayState* play) {
++    if (SteveActor_IsReady()) {
++        Gfx* opa = play->state.gfxCtx->polyOpa.p;
++        Gfx* xlu = play->state.gfxCtx->polyXlu.p;
++        Player_DrawLink(thisx, play);
++        play->state.gfxCtx->polyOpa.p = opa;
++        play->state.gfxCtx->polyXlu.p = xlu;
++        SteveActor_Draw(thisx, play);
++    } else {
++        Player_DrawLink(thisx, play);
++    }
++}
+\ No newline at end of file

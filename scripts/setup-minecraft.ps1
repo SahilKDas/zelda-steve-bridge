@@ -26,6 +26,7 @@ enable-rcon=false
 view-distance=2
 simulation-distance=2
 max-players=1
+pause-when-empty-seconds=-1
 max-world-size=16
 spawn-protection=0
 level-name=bridge-world
