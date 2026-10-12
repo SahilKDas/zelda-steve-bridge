@@ -1,6 +1,6 @@
 {
   "format": "minecraft-wide-player-rig-v2",
-  "source": "SteveActor.c",
+  "source": "SteveActor.cpp",
   "asset_repository": "https://github.com/InventivetalentDev/minecraft-assets",
   "asset_revision": "0c2358f50e81e34def33b75af34fc65409893dc0",
   "skin": "assets/minecraft/textures/entity/player/wide/steve.png",
@@ -13,8 +13,8 @@
     {"limb":"torso","center":[0,18,0],"size":[8,12,4],"uv":[16,16],"outer_uv":[16,32]},
     {"limb":"right_arm","pivot":[-5,22,0],"local_center":[-1,-4,0],"size":[4,12,4],"uv":[40,16],"outer_uv":[40,32]},
     {"limb":"left_arm","pivot":[5,22,0],"local_center":[1,-4,0],"size":[4,12,4],"uv":[32,48],"outer_uv":[48,48]},
-    {"limb":"right_leg","pivot":[-2,12,0],"local_center":[0,-6,0],"size":[4,12,4],"uv":[0,16],"outer_uv":[0,32]},
-    {"limb":"left_leg","pivot":[2,12,0],"local_center":[0,-6,0],"size":[4,12,4],"uv":[16,48],"outer_uv":[0,48]}
+    {"limb":"right_leg","pivot":[-1.9,12,0],"local_center":[0,-6,0],"size":[4,12,4],"uv":[0,16],"outer_uv":[0,32]},
+    {"limb":"left_leg","pivot":[1.9,12,0],"local_center":[0,-6,0],"size":[4,12,4],"uv":[16,48],"outer_uv":[0,48]}
   ],
   "animations":["idle","walk","mine_swing","attack","block","consume","bow","elytra_glide"],
   "held_textures":["iron_pickaxe","iron_sword","cooked_beef","bow","cobblestone","arrow","tnt_side","flint_and_steel","elytra","netherite_axe","shield_base"],

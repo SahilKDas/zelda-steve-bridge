@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "soh_mod/generated/minecraft_textures.inc"
+extern "C" {
 
 static StevePose sPose;
 static int sConnected;
@@ -361,7 +362,7 @@ static void SteveSkinLimb(PlayState* play,int part,float x,float y,float z,float
         gSPMatrix(POLY_OPA_DISP++,MATRIX_NEWMTX(play->state.gfxCtx),G_MTX_MODELVIEW|G_MTX_LOAD|G_MTX_NOPUSH);
         for(face=0;face<6;face++) {
             const SteveSkinFace* texture=&sSkinFaces[part][layer][face];
-            Vtx* vertices=Graph_Alloc(play->state.gfxCtx,4*sizeof(Vtx));
+            Vtx* vertices=(Vtx*)Graph_Alloc(play->state.gfxCtx,4*sizeof(Vtx));
             memset(vertices,0,4*sizeof(Vtx));
             for(i=0;i<4;i++) {
                 int axis;
@@ -383,7 +384,7 @@ static void SteveSkinLimb(PlayState* play,int part,float x,float y,float z,float
 }
 static void SteveSprite(PlayState* play,const SteveSkinFace* texture,float x,float y,float z,float w,float h) {
     int i;
-    Vtx* vertices=Graph_Alloc(play->state.gfxCtx,4*sizeof(Vtx));
+    Vtx* vertices=(Vtx*)Graph_Alloc(play->state.gfxCtx,4*sizeof(Vtx));
     OPEN_DISPS(play->state.gfxCtx);
     memset(vertices,0,4*sizeof(Vtx));
     for(i=0;i<4;i++) {
@@ -450,9 +451,9 @@ int SteveActor_Draw(Actor* actor, PlayState* play) {
         SteveSkinLimb(play,3,1,-4,0,2,6,2);
         if (sPose.hand==3) SteveSprite(play,&sShieldFace,0,-6,3,4,6);
         Matrix_Pop();
-        Matrix_Push(); Matrix_Translate(-2,12,0,MTXMODE_APPLY);
+        Matrix_Push(); Matrix_Translate(-1.9f,12,0,MTXMODE_APPLY);
         Matrix_RotateX(-gait,MTXMODE_APPLY); SteveSkinLimb(play,4,0,-6,0,2,6,2); Matrix_Pop();
-        Matrix_Push(); Matrix_Translate(2,12,0,MTXMODE_APPLY);
+        Matrix_Push(); Matrix_Translate(1.9f,12,0,MTXMODE_APPLY);
         Matrix_RotateX(gait,MTXMODE_APPLY); SteveSkinLimb(play,5,0,-6,0,2,6,2); Matrix_Pop();
     }
     if(sPose.chest.id) {
@@ -499,3 +500,4 @@ int SteveActor_Draw(Actor* actor, PlayState* play) {
     }
     return 1;
 }
+} // extern "C"
