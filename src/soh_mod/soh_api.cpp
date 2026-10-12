@@ -2,7 +2,7 @@
 #include "soh_mod/client.hpp"
 #include <deque>
 #include <algorithm>
-static_assert(sizeof(StevePose)==1200);
+static_assert(sizeof(StevePose)==5296);
 static_assert(offsetof(StevePose,hotbar)==56);
 namespace {
 steve::Client client;
@@ -58,6 +58,9 @@ extern "C" int SteveBridge_GetPose(StevePose* pose) {
     pose->flying=state.flying; pose->combat_cooldown=state.combat_cooldown;
     for(unsigned i=0;i<8;i++) {
         const auto& tnt=state.charges[i];pose->charges[i]={tnt.position.x,tnt.position.y,tnt.position.z,tnt.fuse,tnt.token};
+    }
+    for(unsigned i=0;i<128;i++) {
+        const auto& cell=state.cells[i];pose->cells[i]={cell.position.x,cell.position.y,cell.position.z,cell.kind,cell.token,cell.active,cell.flags};
     }
     return p.connected?1:0;
 }

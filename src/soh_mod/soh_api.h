@@ -16,6 +16,7 @@ typedef struct SteveInput {
 } SteveInput;
 typedef struct SteveItem { uint32_t id,metadata,count,durability; } SteveItem;
 typedef struct SteveTnt { float x,y,z; int32_t fuse; uint64_t token; } SteveTnt;
+typedef struct SteveCell { float x,y,z; uint32_t kind; uint64_t token; uint32_t active,flags; } SteveCell;
 typedef struct StevePose {
     float right_arm,left_arm;
     uint32_t item,hand;
@@ -32,6 +33,7 @@ typedef struct StevePose {
     uint32_t attack_target,flying,command_result;
     int32_t tnt_fuse;
     SteveTnt charges[8];
+    SteveCell cells[128];
 } StevePose;
 int SteveBridge_Frame(const SteveInput* input, StevePose* pose);
 int SteveBridge_GetPose(StevePose* pose);

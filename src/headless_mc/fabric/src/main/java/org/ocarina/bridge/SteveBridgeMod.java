@@ -34,6 +34,9 @@ import net.minecraft.server.network.ServerPlayNetworkHandler;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.Hand;
+import net.minecraft.util.Unit;
+import net.minecraft.component.type.FireworksComponent;
+import java.util.List;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
@@ -70,9 +73,15 @@ public final class SteveBridgeMod implements ModInitializer {
     private int tntFuse=-2;
     private boolean flying;
     private Vec3d flightVelocity=Vec3d.ZERO;
+    private int rocketBoostTicks;
+    private static class Cell { BlockPos shadow; Vec3d position=Vec3d.ZERO; int kind,flags; long token; boolean active; }
+    private final Cell[] cells=new Cell[128];
+    private Cell miningCell;
+    private Vec3d terrainTarget;
+    private long cellToken;
     private static class Charge { BlockPos position; Vec3d nativePosition=Vec3d.ZERO; TntEntity entity; int fuse=-2,unresolvedTicks; long token; }
     private final Charge[] charges=new Charge[8];
-    public SteveBridgeMod() {for(int i=0;i<charges.length;i++)charges[i]=new Charge();}
+    public SteveBridgeMod() {for(int i=0;i<charges.length;i++)charges[i]=new Charge();for(int i=0;i<cells.length;i++)cells[i]=new Cell();}
     private Path playerFile;
     private final ArrayDeque<Integer> sounds = new ArrayDeque<>();
 
@@ -84,7 +93,12 @@ public final class SteveBridgeMod implements ModInitializer {
     private void start(MinecraftServer server) {
         world = server.getOverworld();
         GameProfile profile = new GameProfile(UUID.fromString("22eba9f5-d003-4fd3-a9bf-028a92fca065"), "SteveBridge");
-        player = new ServerPlayerEntity(server, world, profile, SyncedClientOptions.createDefault());
+        player = new ServerPlayerEntity(server, world, profile, SyncedClientOptions.createDefault()) {
+            @Override public ItemStack getMainHandStack() {return slot==9?getInventory().getStack(9):super.getMainHandStack();}
+            @Override public void setStackInHand(Hand hand,ItemStack stack) {
+                if(hand==Hand.MAIN_HAND && slot==9)getInventory().setStack(9,stack);else super.setStackInHand(hand,stack);
+            }
+        };
         player.networkHandler = new ServerPlayNetworkHandler(server,
                 new ClientConnection(NetworkSide.SERVERBOUND), player, ConnectedClientData.createDefault(profile, false)) {
             @Override public void sendPacket(Packet<?> packet) {} // No client, no packet queue.
@@ -92,15 +106,7 @@ public final class SteveBridgeMod implements ModInitializer {
         player.changeGameMode(GameMode.SURVIVAL);
         player.setNoGravity(true);
         player.refreshPositionAndAngles(0.5, 65, 0.5, 0, 0);
-        player.getInventory().setStack(0, new ItemStack(Items.IRON_PICKAXE));
-        player.getInventory().setStack(1, new ItemStack(Items.IRON_SWORD));
-        player.getInventory().setStack(2, new ItemStack(Items.COOKED_BEEF, 8));
-        player.getInventory().setStack(3, new ItemStack(Items.BOW));
-        player.getInventory().setStack(4, new ItemStack(Items.NETHERITE_AXE));
-        player.getInventory().setStack(5, new ItemStack(Items.TNT,16));
-        player.getInventory().setStack(6, new ItemStack(Items.FLINT_AND_STEEL));
-        player.getInventory().setStack(7, new ItemStack(Items.ELYTRA));
-        player.getInventory().setStack(8, new ItemStack(Items.ARROW, 64));
+        starterLoadout();
         player.equipStack(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
         player.getHungerManager().setFoodLevel(12);
         playerFile = server.getSavePath(WorldSavePath.ROOT).resolve("steve-player.json");
@@ -114,7 +120,20 @@ public final class SteveBridgeMod implements ModInitializer {
         combatProxy=new ZombieEntity(EntityType.ZOMBIE,world);
         combatProxy.setAiDisabled(true); combatProxy.setSilent(true);
         combatProxy.getAttributeInstance(EntityAttributes.MAX_HEALTH).setBaseValue(1024);
-        LOG.info("STEVE_BRIDGE_READY Minecraft=1.21.11 nativeProtocol=3");
+        LOG.info("STEVE_BRIDGE_READY Minecraft=1.21.11 nativeProtocol=4");
+    }
+    private void starterLoadout() {
+        var items=new net.minecraft.item.Item[]{Items.DIAMOND_AXE,Items.DIAMOND_PICKAXE,Items.GOLDEN_APPLE,Items.FLINT_AND_STEEL,
+            Items.COBBLESTONE,Items.OBSIDIAN,Items.ELYTRA,Items.FIREWORK_ROCKET,Items.TOTEM_OF_UNDYING,Items.TNT};
+        int[] counts={1,1,64,1,64,32,1,64,1,64};
+        for(int i=0;i<items.length;i++)player.getInventory().setStack(i,new ItemStack(items[i],counts[i]));
+        player.getInventory().getStack(6).set(DataComponentTypes.UNBREAKABLE,Unit.INSTANCE);
+        player.getInventory().getStack(7).set(DataComponentTypes.FIREWORKS,new FireworksComponent(1,List.of()));
+    }
+    private boolean infinite(ItemStack stack) {return stack.isOf(Items.GOLDEN_APPLE)||stack.isOf(Items.COBBLESTONE)||stack.isOf(Items.FIREWORK_ROCKET)||stack.isOf(Items.TNT);}
+    private void restock() {
+        for(int i=0;i<36;i++){var stack=player.getInventory().getStack(i);if(infinite(stack))stack.setCount(64);}
+        if(!player.getOffHandStack().isOf(Items.SHIELD))player.equipStack(EquipmentSlot.OFFHAND,new ItemStack(Items.SHIELD));
     }
     private void tick(MinecraftServer server) {
         if (player == null) return;
@@ -140,7 +159,7 @@ public final class SteveBridgeMod implements ModInitializer {
         }
         else pressed |= buttons & ~lastButtons;
         lastButtons = buttons;
-        player.getInventory().setSelectedSlot(Math.max(0, Math.min(8, slot)));
+        player.getInventory().setSelectedSlot(slot==9?0:Math.max(0, Math.min(8, slot)));
         // SoH owns traversal; Minecraft owns items, health and interactions.
         double px = Math.max(-6, Math.min(6, x - originX));
         double py = Math.max(0, Math.min(4, y - originY));
@@ -159,7 +178,7 @@ public final class SteveBridgeMod implements ModInitializer {
         } else if ((buttons & 2) != 0) {
             if (player.isUsingItem()) player.stopUsingItem();
             ItemStack held = player.getMainHandStack();
-            if (held.isOf(Items.IRON_PICKAXE) && targetEnemy==0) { hand = 1; mine(); }
+            if ((held.isOf(Items.DIAMOND_PICKAXE) || held.isOf(Items.DIAMOND_AXE) && (flags&4)!=0) && targetEnemy==0) { hand = 1; mine(); }
             else {
                 hand = 2; abortMining();
                 if ((pressed & 2) != 0) {
@@ -182,7 +201,11 @@ public final class SteveBridgeMod implements ModInitializer {
             abortMining();
             ItemStack held = player.getMainHandStack();
             if (holdingUse && !player.isUsingItem()) {
-                if((pressed&1)!=0 && (held.isOf(Items.TNT)||held.isOf(Items.FLINT_AND_STEEL))) useBlock(held);
+                if((pressed&1)!=0 && (held.isOf(Items.COBBLESTONE)||held.isOf(Items.OBSIDIAN))) placeCell(held);
+                else if((pressed&1)!=0 && (held.isOf(Items.TNT)||held.isOf(Items.FLINT_AND_STEEL))) useBlock(held);
+                else if((pressed&1)!=0 && held.isOf(Items.FIREWORK_ROCKET) && flying) {
+                    player.interactionManager.interactItem(player,world,held,Hand.MAIN_HAND);rocketBoostTicks=30;
+                }
                 else if(!held.isOf(Items.TNT)&&!held.isOf(Items.FLINT_AND_STEEL)) player.interactionManager.interactItem(player, world, held, Hand.MAIN_HAND);
             } else if (!holdingUse && player.isUsingItem()) {
                 if (held.isOf(Items.BOW)) { player.stopUsingItem(); sound(4); }
@@ -194,14 +217,18 @@ public final class SteveBridgeMod implements ModInitializer {
         // Fake players have no world/network connection to drive their personal tick.
         player.tick();
         player.playerTick();
+        restock();
         if (player.getInventory().getStack(2).getCount() < oldFoodCount) sound(3);
         if(flying && !player.getEquippedStack(EquipmentSlot.CHEST).isOf(Items.ELYTRA)) flying=false;
         if(flying && (flags&2)!=0) flying=false;
         if(flying) {
-            player.startGliding(); player.setVelocity(flightVelocity);
+            player.startGliding();
+            if(rocketBoostTicks>0){flightVelocity=player.getVelocity();rocketBoostTicks--;}
+            player.setVelocity(flightVelocity);
             player.travel(Vec3d.ZERO); flightVelocity=player.getVelocity();
         } else { player.stopGliding(); flightVelocity=Vec3d.ZERO; player.setVelocity(Vec3d.ZERO); }
         updateTnt();
+        for(Cell cell:cells)if(cell.active && cell.flags==0 && world.getBlockState(cell.shadow).isAir())cell.active=false;
         for (ItemEntity drop : world.getEntitiesByClass(ItemEntity.class, player.getBoundingBox().expand(5), e -> true)) {
             ItemStack stack = drop.getStack();
             player.getInventory().insertStack(stack);
@@ -230,6 +257,7 @@ public final class SteveBridgeMod implements ModInitializer {
                 grantMissing(new ItemStack(Items.FLINT_AND_STEEL),6);
                 grantMissing(new ItemStack(Items.ELYTRA),7);
             }
+            if(!data.has("loadoutVersion") || data.get("loadoutVersion").getAsInt()<2) starterLoadout();
         } catch (Exception e) { LOG.error("Cannot load persisted bridge player; using initial equipment",e); }
     }
     private void savePlayer(MinecraftServer server) {
@@ -238,6 +266,7 @@ public final class SteveBridgeMod implements ModInitializer {
             var ops = RegistryOps.of(JsonOps.INSTANCE, server.getRegistryManager());
             JsonObject data = new JsonObject();
             data.addProperty("equipmentVersion",1);
+            data.addProperty("loadoutVersion",2);
             JsonArray items = new JsonArray();
             for (int i=0;i<36;i++) items.add(ItemStack.OPTIONAL_CODEC.encodeStart(ops,player.getInventory().getStack(i)).getOrThrow());
             data.add("inventory",items);
@@ -283,6 +312,8 @@ public final class SteveBridgeMod implements ModInitializer {
             scene = newScene; originX = x; originY = y; originZ = z; abortMining();
             world.setBlockState(new BlockPos(0,65,2),Blocks.STONE.getDefaultState());
             flying=false;
+            for(Cell cell:cells){if(cell.active&&cell.shadow!=null)world.removeBlock(cell.shadow,false);cell.active=false;cell.token=0;}
+            miningCell=null;terrainTarget=null;
             for(Charge charge:charges) {
                 if(charge.entity!=null)charge.entity.discard();
                 if(charge.position!=null && world.getBlockState(charge.position).isOf(Blocks.TNT))world.setBlockState(charge.position,Blocks.AIR.getDefaultState());
@@ -304,7 +335,7 @@ public final class SteveBridgeMod implements ModInitializer {
                     player.getInventory().setStack(arg0,player.getEquippedStack(EquipmentSlot.CHEST));
                     player.equipStack(EquipmentSlot.CHEST,first); commandResult=1;
                 }
-            } else if(operation==3 && arg0>=0 && arg0<9) { slot=arg0; commandResult=1; }
+            } else if(operation==3 && arg0>=0 && arg0<10) { slot=arg0; commandResult=1; }
             else if(operation==4 && player.getEquippedStack(EquipmentSlot.CHEST).isOf(Items.ELYTRA) && (flags&2)==0) {
                 flying=!flying;
                 flightVelocity=player.getRotationVec(1).multiply(0.6).add(0,-0.05,0); commandResult=1;
@@ -314,14 +345,34 @@ public final class SteveBridgeMod implements ModInitializer {
     }
     private void mine() {
         BlockPos target;
-        if (locked != 0) target = BlockPos.ofFloored(tx-originX+0.5, ty-originY+65, tz-originZ+0.5);
+        Vec3d nativeTarget=new Vec3d(tx,ty,tz);
+        if((flags&4)!=0) {
+            if(nativeTarget.squaredDistanceTo(new Vec3d(x,y,z))>36){abortMining();return;}
+            for(Cell cell:cells)if(cell.active&&(cell.flags&1)!=0&&cell.position.squaredDistanceTo(nativeTarget)<0.01){abortMining();return;}
+            Cell found=null;
+            for(Cell cell:cells)if(cell.active&&cell.flags==0&&cell.position.squaredDistanceTo(nativeTarget)<0.3){found=cell;break;}
+            if(found!=null) {target=found.shadow;miningCell=found;terrainTarget=null;}
+            else {
+                target=new BlockPos(0,75,0);
+                if(terrainTarget==null||terrainTarget.squaredDistanceTo(nativeTarget)>0.01) {
+                    abortMining();world.setBlockState(target,Blocks.STONE.getDefaultState());terrainTarget=nativeTarget;
+                }
+            }
+            if(found!=null&&found.kind==13&&player.getMainHandStack().isOf(Items.DIAMOND_AXE)) {
+                world.removeBlock(target,false);player.getMainHandStack().damage(1,player,EquipmentSlot.MAINHAND);
+                player.getInventory().insertStack(new ItemStack(Items.OBSIDIAN));completed();return;
+            }
+        } else if (locked != 0) target = BlockPos.ofFloored(tx-originX+0.5, ty-originY+65, tz-originZ+0.5);
         else target = new BlockPos(0, 65, 2); // Arena block when Zelda has no actor target.
+        Vec3d savedPosition=new Vec3d(player.getX(),player.getY(),player.getZ());
+        if((flags&4)!=0)player.setPosition(target.getX()+0.5,target.getY(),target.getZ()-1.5);
+        try {
         if (System.getenv("STEVE_IN_GAME_TEST") != null && tick % 20 == 0)
             LOG.info("Arena mining pos={} target={} distance={} grounded={} delta={}",new Vec3d(player.getX(),player.getY(),player.getZ()),target,
                     player.squaredDistanceTo(target.toCenterPos()),player.isOnGround(),world.getBlockState(target).calcBlockBreakingDelta(player,world,target));
-        if (player.squaredDistanceTo(target.toCenterPos()) > 25 || world.getBlockState(target).isAir()) { abortMining(); return; }
+        if (((flags&4)==0 && player.squaredDistanceTo(target.toCenterPos()) > 25) || world.getBlockState(target).isAir()) { abortMining(); return; }
         if (!target.equals(mining)) {
-            abortMining(); mining = target;
+            mining = target;miningProgress=0;
             player.interactionManager.processBlockBreakingAction(target, PlayerActionC2SPacket.Action.START_DESTROY_BLOCK,
                     Direction.UP, world.getTopYInclusive(), (int)sequence);
         }
@@ -334,12 +385,45 @@ public final class SteveBridgeMod implements ModInitializer {
                     Direction.UP, world.getTopYInclusive(), (int)sequence);
             if (world.getBlockState(target).isAir()) completed();
         }
+        } finally {if((flags&4)!=0)player.setPosition(savedPosition);}
     }
-    private void completed() { blockEvent++; sound(2); mining = null; miningProgress = 0; stage = -1; }
+    private void completed() {
+        if(miningCell!=null) {
+            for(var drop:world.getEntitiesByClass(ItemEntity.class,new Box(miningCell.shadow).expand(1),e->true)) {
+                player.getInventory().insertStack(drop.getStack());if(drop.getStack().isEmpty())drop.discard();
+            }
+            miningCell.active=false;miningCell=null;
+        } else if(terrainTarget!=null) {
+            for(Cell cell:cells)if(!cell.active){cell.position=terrainTarget;cell.flags=1;cell.kind=0;cell.shadow=null;cell.token=++cellToken;cell.active=true;break;}
+        }
+        blockEvent++; sound(2); mining = null; miningProgress = 0; stage = -1;terrainTarget=null;
+    }
     private void abortMining() {
         if (mining != null) player.interactionManager.processBlockBreakingAction(mining,
                 PlayerActionC2SPacket.Action.ABORT_DESTROY_BLOCK, Direction.UP, world.getTopYInclusive(), (int)sequence);
         mining = null; miningProgress = 0; stage = -1;
+        miningCell=null;terrainTarget=null;
+    }
+    private void placeCell(ItemStack held) {
+        if((flags&8)==0)return;
+        Vec3d nativePosition=new Vec3d(tx,ty,tz);
+        if(nativePosition.squaredDistanceTo(new Vec3d(x,y,z))>36)return;
+        for(Cell cell:cells)if(cell.active&&cell.flags==0&&cell.position.squaredDistanceTo(nativePosition)<0.3)return;
+        for(int i=0;i<cells.length;i++)if(!cells[i].active) {
+            Cell cell=cells[i];BlockPos shadow=new BlockPos(i%16-8,70,i/16-4);
+            world.setBlockState(shadow.down(),Blocks.BEDROCK.getDefaultState());world.removeBlock(shadow,false);
+            Vec3d saved=new Vec3d(player.getX(),player.getY(),player.getZ());player.setPosition(shadow.getX()+0.5,shadow.getY(),shadow.getZ()-1.5);
+            int newKind=held.isOf(Items.OBSIDIAN)?13:5;
+            net.minecraft.util.ActionResult result;
+            try{result=player.interactionManager.interactBlock(player,world,held,Hand.MAIN_HAND,
+                new BlockHitResult(shadow.down().toCenterPos(),Direction.UP,shadow.down(),false));}
+            finally{player.setPosition(saved);}
+            if(result.isAccepted()&&!world.getBlockState(shadow).isAir()) {
+                cell.shadow=shadow;cell.position=nativePosition;cell.kind=newKind;
+                cell.flags=0;cell.token=++cellToken;cell.active=true;restock();
+            }
+            return;
+        }
     }
     private void sound(int value) { if (sounds.size() < 64) sounds.addLast(value); }
     private void useBlock(ItemStack held) {
@@ -367,6 +451,7 @@ public final class SteveBridgeMod implements ModInitializer {
             if(placing) {
                 placedTnt=base.up(); tntFuse=-1; tntEvent++; selected.position=placedTnt;selected.fuse=-1;selected.entity=null;selected.token=tntEvent;
                 selected.nativePosition=new Vec3d(x-originX+placedTnt.getX()+0.5-player.getX(),y-originY,z-originZ+placedTnt.getZ()+0.5-player.getZ());
+                if((flags&8)!=0)selected.nativePosition=new Vec3d(tx-originX,ty-originY-0.5,tz-originZ);
             }
             else {
                 var entities=world.getEntitiesByClass(TntEntity.class,new Box(base).expand(0.75),e->true);
@@ -392,16 +477,17 @@ public final class SteveBridgeMod implements ModInitializer {
         }
     }
     private int kind(ItemStack held) {
-        return held.isOf(Items.IRON_PICKAXE)?1:held.isOf(Items.IRON_SWORD)?2:held.isOf(Items.COOKED_BEEF)?3:
+        return held.isOf(Items.DIAMOND_PICKAXE)?1:held.isOf(Items.IRON_SWORD)?2:held.isOf(Items.GOLDEN_APPLE)?3:
             held.isOf(Items.BOW)?4:held.isOf(Items.ARROW)?6:held.isOf(Items.TNT)?7:
-            held.isOf(Items.FLINT_AND_STEEL)?8:held.isOf(Items.ELYTRA)?9:held.isOf(Items.NETHERITE_AXE)?10:
-            held.isOf(Items.SHIELD)?11:held.isOf(Items.DIAMOND_CHESTPLATE)?12:held.isEmpty()?0:5;
+            held.isOf(Items.FLINT_AND_STEEL)?8:held.isOf(Items.ELYTRA)?9:held.isOf(Items.DIAMOND_AXE)?10:
+            held.isOf(Items.SHIELD)?11:held.isOf(Items.DIAMOND_CHESTPLATE)?12:held.isOf(Items.OBSIDIAN)?13:
+            held.isOf(Items.FIREWORK_ROCKET)?14:held.isOf(Items.TOTEM_OF_UNDYING)?15:held.isEmpty()?0:5;
     }
     private void item(ByteBuffer p, int offset, ItemStack stack) {
         p.putInt(offset, stack.isEmpty() ? 0 : Registries.ITEM.getRawId(stack.getItem()));
-        p.putInt(offset + 4, stack.getDamage());
+        p.putInt(offset + 4, stack.getDamage()|(infinite(stack)?0x80000000:0)|(stack.contains(DataComponentTypes.UNBREAKABLE)?0x40000000:0));
         p.putInt(offset + 8, stack.getCount());
-        p.putInt(offset + 12, stack.isDamageable() ? stack.getMaxDamage() - stack.getDamage() : 0);
+        p.putInt(offset + 12, stack.getMaxDamage()>0 ? stack.getMaxDamage() - stack.getDamage() : 0);
     }
     private void publish() {
         ByteBuffer p = NativeBridge.reserve();
@@ -410,7 +496,7 @@ public final class SteveBridgeMod implements ModInitializer {
         p.putLong(0,tick); p.putLong(16,sequence);
         item(p,24,player.getMainHandStack());
         p.putInt(40,hand); p.putFloat(44,player.getHealth()); p.putFloat(48,player.handSwingProgress);
-        p.putInt(52,stage); p.putInt(56,player.getInventory().getSelectedSlot());
+        p.putInt(52,stage); p.putInt(56,slot);
         int count = Math.min(8, sounds.size()); p.putInt(60,count);
         for(int i=0;i<count;i++) p.putInt(64+i*4,sounds.removeFirst());
         for(int i=0;i<9;i++) item(p,96+i*16,player.getInventory().getStack(i));
@@ -441,6 +527,11 @@ public final class SteveBridgeMod implements ModInitializer {
             Charge charge=charges[i];int offset=1088+i*24;
             if(charge.position!=null) {p.putFloat(offset,(float)charge.nativePosition.x);p.putFloat(offset+4,(float)charge.nativePosition.y);p.putFloat(offset+8,(float)charge.nativePosition.z);}
             p.putInt(offset+12,charge.fuse);p.putLong(offset+16,charge.token);
+        }
+        for(int i=0;i<cells.length;i++) {
+            Cell cell=cells[i];int offset=1280+i*32;
+            p.putFloat(offset,(float)cell.position.x);p.putFloat(offset+4,(float)cell.position.y);p.putFloat(offset+8,(float)cell.position.z);
+            p.putInt(offset+12,cell.kind);p.putLong(offset+16,cell.token);p.putInt(offset+24,cell.active?1:0);p.putInt(offset+28,cell.flags);
         }
         NativeBridge.publish();
     }

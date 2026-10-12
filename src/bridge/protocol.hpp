@@ -6,7 +6,7 @@
 #include <type_traits>
 
 namespace steve {
-inline constexpr std::uint32_t magic = 0x53545645, version = 3;
+inline constexpr std::uint32_t magic = 0x53545645, version = 4;
 enum Button : std::uint32_t { a=1, b=2, z=4, r=8, c_up=16, c_down=32, c_left=64, c_right=128 };
 enum class Hand : std::uint32_t { idle, mine_swing, attack, block, consume, bow };
 enum class Sound : std::uint32_t { none, hit, broken_block, eat, shoot };
@@ -29,6 +29,7 @@ struct alignas(64) OotToMcPacket {
 };
 struct Item { std::uint32_t id{}, metadata{}, count{}, durability{}; };
 struct TntState { Vec3 position{}; std::int32_t fuse{-2}; std::uint64_t token{}; };
+struct WorldCell { Vec3 position{}; std::uint32_t kind{}; std::uint64_t token{}; std::uint32_t active{},flags{}; };
 struct alignas(64) McToOotPacket {
     std::uint64_t tick{}, time_ns{}, input_sequence{};
     Item held{};
@@ -56,9 +57,11 @@ struct alignas(64) McToOotPacket {
     float combat_cooldown{};
     std::array<std::uint32_t,5> reserved{};
     std::array<TntState,8> charges{};
+    std::array<WorldCell,128> cells{};
 };
 static_assert(sizeof(OotToMcPacket)==128 && alignof(OotToMcPacket)==64);
-static_assert(sizeof(McToOotPacket)==1280 && alignof(McToOotPacket)==64);
+static_assert(sizeof(McToOotPacket)==5376 && alignof(McToOotPacket)==64);
+static_assert(offsetof(McToOotPacket,cells)==1280 && sizeof(WorldCell)==32);
 static_assert(offsetof(OotToMcPacket,command_sequence)==80);
 static_assert(offsetof(McToOotPacket,inventory)==256 && offsetof(McToOotPacket,command_ack)==1000);
 static_assert(offsetof(McToOotPacket,tnt_event)==1024 && offsetof(McToOotPacket,flying)==1060);
