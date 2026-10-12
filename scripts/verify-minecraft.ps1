@@ -6,6 +6,9 @@ $runtime = "$root/runtime/minecraft"
 if (Test-Path -LiteralPath "$runtime/stop.request") { Remove-Item -LiteralPath "$runtime/stop.request" }
 $bridge = Start-Process "$root/build/bridge.exe" -ArgumentList default,300 -WindowStyle Hidden -PassThru
 $server = $null
+$playerFile="$runtime/bridge-world/steve-player.json"
+$savedPlayer=if(Test-Path -LiteralPath $playerFile) { [IO.File]::ReadAllBytes($playerFile) } else { $null }
+if(Test-Path -LiteralPath $playerFile) { Remove-Item -LiteralPath $playerFile }
 try {
     $arguments = '"{0}" "{1}" "{2}" 240' -f $Java,$runtime,"$root/build/libsteve_jni.dll"
     $server = Start-Process "$root/build/mc_supervisor.exe" -ArgumentList $arguments -WindowStyle Hidden `
@@ -18,6 +21,8 @@ try {
         if (-not $server.WaitForExit(20000)) { Stop-Process -Id $server.Id; throw 'Server failed to shut down normally' }
     }
     if (-not $bridge.HasExited) { Stop-Process -Id $bridge.Id }
+    if($null -ne $savedPlayer) { [IO.File]::WriteAllBytes($playerFile,$savedPlayer) }
+    elseif(Test-Path -LiteralPath $playerFile) { Remove-Item -LiteralPath $playerFile }
 }
 Get-Content -LiteralPath "$runtime/resources.log"
 if ($server.ExitCode -ne 0) { throw 'Server resource supervisor reported failure' }

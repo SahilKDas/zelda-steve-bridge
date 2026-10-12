@@ -6,7 +6,7 @@
 #include <type_traits>
 
 namespace steve {
-inline constexpr std::uint32_t magic = 0x53545645, version = 2;
+inline constexpr std::uint32_t magic = 0x53545645, version = 3;
 enum Button : std::uint32_t { a=1, b=2, z=4, r=8, c_up=16, c_down=32, c_left=64, c_right=128 };
 enum class Hand : std::uint32_t { idle, mine_swing, attack, block, consume, bow };
 enum class Sound : std::uint32_t { none, hit, broken_block, eat, shoot };
@@ -21,7 +21,11 @@ struct alignas(64) OotToMcPacket {
     float damage{};
     std::uint32_t scene{}, flags{};
     std::uint32_t health_capacity{};
-    std::array<std::uint32_t,12> reserved{};
+    std::uint64_t command_sequence{};
+    std::uint32_t command{}, argument0{}, argument1{}, target_token{};
+    float target_health{};
+    std::uint32_t target_enemy{};
+    std::array<std::uint32_t,4> reserved{};
 };
 struct Item { std::uint32_t id{}, metadata{}, count{}, durability{}; };
 struct alignas(64) McToOotPacket {
@@ -36,9 +40,26 @@ struct alignas(64) McToOotPacket {
     // A completed mining operation acknowledged with a monotonic operation ID.
     std::uint64_t block_event{};
     std::uint32_t block_id{}, backend_kind{};
+    std::array<Item,36> inventory{};
+    std::array<std::uint32_t,36> inventory_kind{};
+    Item chest{};
+    std::uint32_t chest_kind{},command_result{};
+    std::uint64_t command_ack{},attack_event{};
+    float attack_damage{};
+    std::uint32_t attack_target{};
+    std::uint64_t tnt_event{};
+    Vec3 tnt_position{};
+    std::int32_t tnt_fuse{-2};
+    Vec3 flight_velocity{};
+    std::uint32_t flying{};
+    float combat_cooldown{};
+    std::array<std::uint32_t,53> reserved{};
 };
 static_assert(sizeof(OotToMcPacket)==128 && alignof(OotToMcPacket)==64);
-static_assert(sizeof(McToOotPacket)==256 && alignof(McToOotPacket)==64);
+static_assert(sizeof(McToOotPacket)==1280 && alignof(McToOotPacket)==64);
+static_assert(offsetof(OotToMcPacket,command_sequence)==80);
+static_assert(offsetof(McToOotPacket,inventory)==256 && offsetof(McToOotPacket,command_ack)==1000);
+static_assert(offsetof(McToOotPacket,tnt_event)==1024 && offsetof(McToOotPacket,flying)==1060);
 static_assert(offsetof(OotToMcPacket, target)==48);
 static_assert(offsetof(OotToMcPacket, damage)==64 && offsetof(OotToMcPacket, health_capacity)==76);
 static_assert(offsetof(McToOotPacket, hotbar)==96 && offsetof(McToOotPacket, block_event)==240);

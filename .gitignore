@@ -17,3 +17,4 @@ runtime/
 .gradle/
 src/headless_mc/fabric/build/
 src/headless_mc/fabric/.gradle/
+src/soh_mod/generated/

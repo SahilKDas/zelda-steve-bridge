@@ -33,7 +33,7 @@ index 40919495..a6802fcc 100644
  
      if(NOT EXISTS ${VCPKG_ROOT}/README.md)
 diff --git a/soh/CMakeLists.txt b/soh/CMakeLists.txt
-index f356d214..ee7458a3 100644
+index f356d214..a8fd15b6 100644
 --- a/soh/CMakeLists.txt
 +++ b/soh/CMakeLists.txt
 @@ -460,7 +460,7 @@ if(MSVC)
@@ -54,6 +54,15 @@ index f356d214..ee7458a3 100644
              /SUBSYSTEM:WINDOWS
          )
      endif()
+@@ -629,7 +629,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+     find_package(Opus CONFIG REQUIRED)
+     link_libraries(Opus::opus)
+     find_package(OpusFile CONFIG REQUIRED)
+-    link_libraries(OpusFile::opusfile CONFIG REQUIRED)
++    link_libraries(OpusFile::opusfile)
+     if(SOH_WINDOWS_64BIT)
+         set(ADDITIONAL_LIBRARY_DEPENDENCIES
+             "libultraship;"
 @@ -803,3 +803,7 @@ wut_create_wuhb(${PROJECT_NAME}
  INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/soh.rpx ${CMAKE_CURRENT_BINARY_DIR}/soh.wuhb DESTINATION . COMPONENT ship)
  
@@ -87,6 +96,56 @@ index bc2a3d14..c49c68af 100644
          if (archive.empty()) {
              fprintf(stderr, "failed to extract %s\n", rom.c_str());
              return 1;
+diff --git a/soh/soh/OTRGlobals.cpp b/soh/soh/OTRGlobals.cpp
+index d336c3c5..791d8216 100644
+--- a/soh/soh/OTRGlobals.cpp
++++ b/soh/soh/OTRGlobals.cpp
+@@ -451,7 +451,9 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
+     OSFatal();
+ #endif
+ 
+-    if (!std::filesystem::exists(installPath + "/assets")) {
++    if (!std::filesystem::exists(installPath + "/assets") &&
++        (shouldRegen || (!std::filesystem::exists(Ship::Context::LocateFileAcrossAppDirs("oot.o2r", appShortName)) &&
++                         !std::filesystem::exists(Ship::Context::LocateFileAcrossAppDirs("oot-mq.o2r", appShortName))))) {
+         SohGui::RegisterPopup("Extractor assets not found",
+                               "No O2R files found. Missing 'assets/' folder needed to generate OTR file.\nPlease "
+                               "re-extract them from the download or.\n\nExiting...",
+@@ -1662,12 +1664,14 @@ extern "C" uint64_t GetUnixTimestamp() {
+     return (uint64_t)millis.count();
+ }
+ 
++extern "C" void SteveUi_Frame(int scancode);
+ extern "C" void Graph_StartFrame() {
+     auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+ #ifndef __WIIU__
+     using Ship::KbScancode;
+     int32_t dwScancode = OTRGlobals::Instance->context->GetWindow()->GetLastScancode();
+     OTRGlobals::Instance->context->GetWindow()->SetLastScancode(-1);
++    SteveUi_Frame(dwScancode);
+ 
+     switch (dwScancode) {
+         case KbScancode::LUS_KB_F1: {
+diff --git a/soh/src/code/z_collision_check.c b/soh/src/code/z_collision_check.c
+index be81fcca..e069e35e 100644
+--- a/soh/src/code/z_collision_check.c
++++ b/soh/src/code/z_collision_check.c
+@@ -4,6 +4,7 @@
+ #include "soh/Enhancements/game-interactor/GameInteractor.h"
+ #include <assert.h>
+ #include <libultraship/bridge/consolevariablebridge.h>
++int SteveActor_IsAttackInfo(const ColliderInfo* info);
+ 
+ typedef s32 (*ColChkResetFunc)(PlayState*, Collider*);
+ typedef void (*ColChkBloodFunc)(PlayState*, Collider*, Vec3f*);
+@@ -3024,6 +3025,7 @@ void CollisionCheck_ApplyDamage(PlayState* play, CollisionCheckContext* colChkCt
+         damage = tbl->table[i] & 0xF;
+         collider->actor->colChkInfo.damageEffect = tbl->table[i] >> 4 & 0xF;
+     }
++    if (SteveActor_IsAttackInfo(info->acHitInfo)) damage=info->acHitInfo->toucher.damage;
+     if (!(collider->acFlags & AC_HARD)) {
+         collider->actor->colChkInfo.damage += damage;
+     }
 diff --git a/soh/src/code/z_play.c b/soh/src/code/z_play.c
 index 729edd0e..f5f19671 100644
 --- a/soh/src/code/z_play.c
@@ -105,28 +164,32 @@ index 729edd0e..f5f19671 100644
  
      play->state.gfxCtx->callback = NULL;
 diff --git a/soh/src/overlays/actors/ovl_player_actor/z_player.c b/soh/src/overlays/actors/ovl_player_actor/z_player.c
-index 09dfb520..822ea9f6 100644
+index 09dfb520..cc6b071c 100644
 --- a/soh/src/overlays/actors/ovl_player_actor/z_player.c
 +++ b/soh/src/overlays/actors/ovl_player_actor/z_player.c
-@@ -6,6 +6,9 @@
+@@ -6,6 +6,12 @@
  
  #include <libultraship/libultra.h>
  #include "global.h"
 +void SteveActor_Update(Actor* actor, PlayState* play);
 +int SteveActor_Draw(Actor* actor, PlayState* play);
 +int SteveActor_IsReady(void);
++void Player_Draw(Actor* thisx, PlayState* play);
++void Player_Update(Actor* thisx, PlayState* play);
++void SteveActor_PostUpdate(Actor* actor, PlayState* play);
  
  #include "overlays/actors/ovl_Bg_Heavy_Block/z_bg_heavy_block.h"
  #include "overlays/actors/ovl_Door_Shutter/z_door_shutter.h"
-@@ -12192,6 +12195,7 @@ static Vec3f sDogSpawnOffset = { 0.0f, 0.0f, -30.0f };
+@@ -12191,7 +12197,7 @@ static Vec3f sDogSpawnOffset = { 0.0f, 0.0f, -30.0f };
+ 
  s32 Player_UpdateNoclip(Player* this, PlayState* play);
  
- void Player_Update(Actor* thisx, PlayState* play) {
-+    SteveActor_Update(thisx, play);
+-void Player_Update(Actor* thisx, PlayState* play) {
++static void Player_UpdateLink(Actor* thisx, PlayState* play) {
      static Vec3f sDogSpawnPos;
      Player* this = (Player*)thisx;
      s32 dogParams;
-@@ -12429,7 +12433,7 @@ void Player_DrawGameplay(PlayState* play, Player* this, s32 lod, Gfx* cullDList,
+@@ -12429,7 +12435,7 @@ void Player_DrawGameplay(PlayState* play, Player* this, s32 lod, Gfx* cullDList,
      CLOSE_DISPS(play->state.gfxCtx);
  }
  
@@ -135,12 +198,17 @@ index 09dfb520..822ea9f6 100644
      PlayState* play = play2;
      Player* this = (Player*)thisx;
  
-@@ -16612,3 +16616,17 @@ void Player_StartTalking(PlayState* play, Actor* actor) {
+@@ -16612,3 +16618,22 @@ void Player_StartTalking(PlayState* play, Actor* actor) {
      F(sHeldItemButtonIsHeldDown)
  
  SHIP_SAVESTATE_DEFINE(Player, PLAYER_SHIP_SAVESTATE_FIELDS)
 +
 +/* Keep vanilla post-limb collision/focus updates while discarding Link's render commands. */
++void Player_Update(Actor* thisx, PlayState* play) {
++    SteveActor_Update(thisx,play);
++    Player_UpdateLink(thisx,play);
++    SteveActor_PostUpdate(thisx,play);
++}
 +void Player_Draw(Actor* thisx, PlayState* play) {
 +    if (SteveActor_IsReady()) {
 +        Gfx* opa = play->state.gfxCtx->polyOpa.p;
@@ -153,4 +221,3 @@ index 09dfb520..822ea9f6 100644
 +        Player_DrawLink(thisx, play);
 +    }
 +}
-\ No newline at end of file

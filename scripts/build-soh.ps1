@@ -2,6 +2,10 @@ param([switch]$ConfigureOnly, [int]$Jobs = 8)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 & "$PSScriptRoot/disk-budget.ps1" -CleanObjects
+if(-not (Test-Path -LiteralPath "$root/src/soh_mod/generated/minecraft_textures.inc")) {
+    & python "$PSScriptRoot/fetch-minecraft-assets.py"
+    if($LASTEXITCODE -ne 0) { throw 'Minecraft texture preparation failed' }
+}
 $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -property installationPath
 if (-not $vsPath) { throw 'Visual Studio C++ build tools are required' }
 $envLines = & cmd.exe /d /c "`"$vsPath\Common7\Tools\VsDevCmd.bat`" -arch=x64 -host_arch=x64 >nul && set"

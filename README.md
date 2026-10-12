@@ -53,10 +53,13 @@ Minecraft ticks at 20 Hz. Continuous arm poses interpolate one tick behind; inve
 ```powershell
 ctest --test-dir build --output-on-failure
 ./scripts/verify-minecraft.ps1
+./scripts/verify-soh.ps1
 ./scripts/disk-budget.ps1
 ```
 
 The deterministic separate-process harness (`headless_mc.exe`) exists only for transport regression tests. The production launcher uses the actual Fabric server. Native tests cover 100,000 concurrent ring transfers, wraparound/full queues, button edges, audio ordering, stale-state fallback and actor pose. The real-server test uses the same C API as SoH and verifies vanilla stone mining, drops, durability, shield pose, transferred damage, timed food use and bow release.
+
+`verify-soh.ps1` launches the compiled game with an isolated temporary debug save in `runtime/soh-test`. Its opt-in actor test checks rendered frames, dynamic collision registration/removal, mining durability, shielding, health, food and bow ammunition. The result is written to `runtime/soh-test/steve-in-game-test.log`. Use `-KeepOpen` to inspect the model after the test, then close the game to finish verification.
 
 A fresh Minecraft test measured 421,744,640 bytes peak working memory, 451,620,864 bytes peak private memory, and 150,070,577 bytes runtime storage. The supervisor enforces a 480,000,000-byte committed-memory Job Object limit, checks peak working memory against 500,000,000 bytes, and stops if runtime storage reaches 200,000,000 bytes. It launches without a window and kills its child on supervisor termination. The fixed spawn bypasses expensive vanilla spawn-region pre-generation.
 
