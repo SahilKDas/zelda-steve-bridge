@@ -20,5 +20,12 @@
   "held_textures":["iron_pickaxe","iron_sword","cooked_beef","bow","cobblestone","arrow","tnt_side","flint_and_steel","elytra","netherite_axe","shield_base"],
   "elytra_texture":"assets/minecraft/textures/entity/equipment/wings/elytra.png",
   "arena":{"cube_half_extents":[10,10,10],"offset":[0,10,40],"collision_triangles":12},
-  "tnt":{"maximum_active_charges":8,"cube_half_extents":[10,10,10],"textures":["tnt_side","tnt_top","tnt_bottom"]}
+  "tnt":{"maximum_active_charges":8,"cube_half_extents":[10,10,10],"textures":["tnt_side","tnt_top","tnt_bottom"]},
+  "diamond_armor": {
+    "textures": ["entity/equipment/humanoid/diamond.png","entity/equipment/humanoid_leggings/diamond.png"],
+    "glint": "misc/enchanted_glint_armor.png",
+    "phases": 8,
+    "enchantments": ["protection:4","unbreaking:3"],
+    "automatic": true
+  }
 }

@@ -49,7 +49,7 @@ int main() try {
     input.buttons=0; run(8);
     input.damage=4; run(1); input.damage=0; run(8);
     std::cout<<"health after Zelda damage="<<pose.health<<'\n';
-    awaitState([&]{return pose.health<=16.1f;},"Minecraft authoritative health applies Zelda damage");
+    awaitState([&]{return pose.health<20 && pose.health>16;},"enchanted diamond armor reduces Zelda damage");
     input.slot=2; input.buttons=steve::a; run(120);
     awaitState([&]{return pose.hotbar[2].count==initialFood-1;},"vanilla timed food consumption");
     input.buttons=0; run(8);
@@ -74,10 +74,11 @@ int main() try {
         input.command_sequence=0;input.command=0;
     };
     require(pose.inventory_kind[4]==10 && pose.inventory_kind[5]==7 && pose.inventory_kind[6]==8 && pose.inventory_kind[7]==9,"new equipment registry kinds");
+    require(pose.equipment_flags==255,"full enchanted diamond armor equipped automatically");
     command(1,4,10); run(5);
     require(pose.inventory_kind[10]==10 && pose.inventory[4].count==0,"36-slot inventory swap");
     command(1,4,10);command(2,7,0);run(5);
-    require(pose.chest.durability>0 && pose.inventory[7].count==0,"elytra equipped in chest slot");
+    require(pose.chest.durability>0 && pose.inventory_kind[7]==12 && !(pose.equipment_flags&2),"elytra swaps with diamond chestplate");
     const auto initialElytra=pose.chest.durability;
     input.y=3;input.flags=0;run(5);command(4,0,0);run(10);
     require(pose.flying && std::isfinite(pose.flight_z) && std::abs(pose.flight_z)>0.01f,"vanilla elytra flight velocity");

@@ -21,3 +21,20 @@ The entire parent workspace, including hidden Git files, caches, sources, builds
 The original Downloads ROMs were read without modification. Test-created player inventory was archived at `cache/test-player-before-release.json`; the production launch starts with fresh starter equipment. Verification supplies temporary equipment and restores any existing player inventory after shutdown.
 
 Run `Play-Steve.cmd` for normal play. Reproduce the checks with `scripts/verify-minecraft.ps1`, `scripts/verify-soh.ps1`, and `scripts/disk-budget.ps1`. Runtime logs are ignored by Git; this report records the successful release checks.
+
+Post-launch fixes and armor release:
+
+- Steve's material now explicitly selects a single texture cycle; the previous second
+  cycle sampled the scene's stale tile 1. Debug overlay defaults off. Glide uses V,
+  avoiding SoH's G binding; Left/Right arrows cycle the hotbar.
+- The shared stone/TNT collision header now supplies a CAM_SET_NONE camera entry.
+  The reproduced TNT crash resolved to BgCheck_GetBgCamSettingImpl dereferencing its
+  formerly null camera list. Native TNT placement, priming and explosion now pass.
+- Default armor is actual Minecraft diamond equipment with Protection IV and
+  Unbreaking III. All four equipment/glint flags pass; a four-point incoming hit
+  leaves 18.56 health. Chestplate/elytra swaps and equipment persistence are supported.
+- Official diamond and armor-glint textures generate eight masked shimmer phases.
+  The native regression requires glint drawing and eleven loaded inventory textures.
+  Its final 900-frame run passed mining, TNT, five enemy collisions, inventory and flight.
+- C++26 transport tests and real Minecraft interaction tests passed again. Final
+  workspace usage is approximately 3.168 billion bytes, below the five-billion ceiling.

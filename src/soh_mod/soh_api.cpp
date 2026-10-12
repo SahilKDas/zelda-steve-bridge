@@ -39,6 +39,7 @@ extern "C" int SteveBridge_GetPose(StevePose* pose) {
     pose->tick=state.tick; pose->block_event=state.block_event;
     pose->item_kind=state.backend_kind>>8; pose->selected_slot=state.selected_slot;
     pose->block_id=state.block_id;
+    pose->equipment_flags=state.reserved[0];
     if(state.backend_kind==0) pose->item_kind=state.held.id;
     for(unsigned i=0;i<9;++i) {
         const auto& item=state.hotbar[i];

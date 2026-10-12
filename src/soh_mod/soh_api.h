@@ -22,7 +22,7 @@ typedef struct StevePose {
     float health;
     int32_t destruction_stage;
     uint64_t tick,block_event;
-    uint32_t item_kind,selected_slot,block_id,reserved;
+    uint32_t item_kind,selected_slot,block_id,equipment_flags;
     SteveItem hotbar[9];
     SteveItem inventory[36];
     uint32_t inventory_kind[36];

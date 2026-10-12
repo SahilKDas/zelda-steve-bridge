@@ -15,12 +15,13 @@ int inventoryDraws{},loadedTextures{};
 std::shared_ptr<Fast::Fast3dGui> gameGui() {
     return std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
 }
-constexpr const char* names[]={"Empty","Iron pickaxe","Iron sword","Cooked beef","Bow","Block","Arrow","TNT","Flint and steel","Elytra","Netherite axe","Shield"};
-constexpr const char* files[]={"","item/iron_pickaxe.png","item/iron_sword.png","item/cooked_beef.png","item/bow.png","block/cobblestone.png","item/arrow.png","block/tnt_side.png","item/flint_and_steel.png","item/elytra.png","item/netherite_axe.png",""};
+constexpr const char* names[]={"Empty","Iron pickaxe","Iron sword","Cooked beef","Bow","Block","Arrow","TNT","Flint and steel","Elytra","Netherite axe","Shield","Diamond chestplate"};
+constexpr const char* files[]={"","item/iron_pickaxe.png","item/iron_sword.png","item/cooked_beef.png","item/bow.png","block/cobblestone.png","item/arrow.png","block/tnt_side.png","item/flint_and_steel.png","item/elytra.png","item/netherite_axe.png","","item/diamond_chestplate.png"};
 class Inventory final : public Ship::GuiWindow {
     int selected=-1;
     void InitElement() override {
-        for(unsigned kind=1;kind<11;kind++) {
+        for(unsigned kind=1;kind<13;kind++) {
+            if(!*files[kind]) continue;
             int width{},height{},channels{};
             const auto path=std::string("minecraft-assets/")+files[kind];
             auto* pixels=stbi_load(path.c_str(),&width,&height,&channels,4);
@@ -44,7 +45,7 @@ class Inventory final : public Ship::GuiWindow {
         auto slot=[&](int index) {
             ImGui::PushID(index);
             auto item=pose.inventory[index]; auto kind=pose.inventory_kind[index];
-            if(kind>11) kind=0;
+            if(kind>12) kind=0;
             const auto position=ImGui::GetCursorScreenPos();
             const bool highlighted=selected==index || (index<9 && pose.selected_slot==static_cast<uint32_t>(index));
             if(highlighted) ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(0.45f,0.38f,0.13f,1));
@@ -71,8 +72,8 @@ class Inventory final : public Ship::GuiWindow {
         ImGui::SeparatorText("Hotbar");
         for(int col=0;col<9;col++){if(col)ImGui::SameLine();slot(col);}
         ImGui::SeparatorText("Chest equipment");
-        ImGui::Text("%s  durability %u",pose.chest.id?"Elytra":"Empty",pose.chest.durability);
-        ImGui::BeginDisabled(selected<0 || (pose.inventory_kind[selected]!=9 && pose.inventory[selected].count!=0));
+        ImGui::Text("%s  durability %u",(pose.equipment_flags&2)?"Enchanted diamond chestplate":pose.chest.id?"Elytra":"Empty",pose.chest.durability);
+        ImGui::BeginDisabled(selected<0 || (pose.inventory_kind[selected]!=9 && pose.inventory_kind[selected]!=12 && pose.inventory[selected].count!=0));
         if(ImGui::Button("Equip selected / swap chest")) {SteveBridge_RequestCommand(2,static_cast<uint32_t>(selected),0);selected=-1;}
         ImGui::EndDisabled();
         if(ImGui::Button("Cancel selection")) selected=-1;

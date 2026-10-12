@@ -37,6 +37,7 @@ static int sAxeInitialized;
 static int sWasFlying;
 static float sGravityBeforeFlight;
 static int sNativeAxeHits;
+static int sArmorGlintDraws;
 static ColliderQuadInit sAxeInit = {
     {COLTYPE_NONE,AT_ON|AT_TYPE_PLAYER,AC_NONE,OC1_NONE,OC2_NONE,COLSHAPE_QUAD},
     {ELEMTYPE_UNK0,{DMG_HAMMER_SWING,0,1},{0,0,0},TOUCH_ON|TOUCH_SFX_NORMAL,BUMP_NONE,OCELEM_NONE},
@@ -61,7 +62,7 @@ static void SteveActor_TestInput(SteveInput* packet) {
     if (!sConnected) { packet->flags|=1; return; }
     sTestFrame++;
     if (sTestFrame==175) sTestShield=sPose.hand==3;
-    if (sTestFrame==210) sTestDamage=sPose.health<=16.1f;
+    if (sTestFrame==210) sTestDamage=sPose.health<20;
     if (sTestFrame==1) {
         packet->flags|=1;
         sTestPick=sPose.hotbar[0].durability; sTestFood=sPose.hotbar[2].count;
@@ -120,7 +121,7 @@ static void SteveActor_TestInput(SteveInput* packet) {
     if(sTestFrame==900) {
         FILE* log=fopen("steve-in-game-test.log","w");
         int passed=sTestBasePassed && sTestTntPlaced && sTestTntPrimed && sTestTntExplosion>=2 &&
-            sNativeAxeHits>=2 && sTestEnemyDamaged && sTestSwap && SteveUi_TestDraws()>3 && SteveUi_TextureCount()==10 && sTestGlide;
+            sNativeAxeHits>=2 && sTestEnemyDamaged && sTestSwap && SteveUi_TestDraws()>3 && SteveUi_TextureCount()==11 && sTestGlide && sArmorGlintDraws>0;
         if(log) {fprintf(log,"%s native SoH: rendered=%d mining=%llu TNT_place=%d TNT_prime=%d TNT_explode=%d axe_collisions=%d inventory_swap=%d inventory_draws=%d textures=%d elytra=%d fuse=%d charge_fuse=%d enemy_damaged=%d\n",
             passed?"PASS":"FAIL",sRenderedFrames,(unsigned long long)sPose.block_event,sTestTntPlaced,sTestTntPrimed,sTestTntExplosion,
             sNativeAxeHits,sTestSwap,SteveUi_TestDraws(),SteveUi_TextureCount(),sTestGlide,sPose.tnt_fuse,sPose.charges[0].fuse,sTestEnemyDamaged);fclose(log);}
@@ -342,7 +343,7 @@ void SteveActor_PostUpdate(Actor* actor,PlayState* play) {
 }
 
 static void SteveSkinLimb(PlayState* play,int part,float x,float y,float z,float w,float h,float d) {
-    int layer,face,i;
+    int layer,face,i,pass;
     const float corners[6][4][3] = {
         {{-w,h,-d},{w,h,-d},{w,h,d},{-w,h,d}},
         {{-w,-h,d},{w,-h,d},{w,-h,-d},{-w,-h,-d}},
@@ -358,12 +359,32 @@ static void SteveSkinLimb(PlayState* play,int part,float x,float y,float z,float
     gDPSetCombineMode(POLY_OPA_DISP++,G_CC_DECALRGBA,G_CC_DECALRGBA);
     gDPSetAlphaCompare(POLY_OPA_DISP++,G_AC_THRESHOLD);
     gDPSetBlendColor(POLY_OPA_DISP++,0,0,0,128);
-    for(layer=0;layer<2;layer++) {
+    for(layer=0;layer<(part>=4?4:3);layer++) {
+        int armorPart=part;
+        int equipment=part==0?0:part<4?1:layer==2?2:3;
+        if(layer>=2 && !(sPose.equipment_flags&(1u<<equipment))) continue;
+        if(part>=4 && layer==2) armorPart=part+2;
         Matrix_Push();
-        if(layer) Matrix_Scale(1.0625f,1.0625f,1.0625f,MTXMODE_APPLY);
+        if(layer) {
+            const float inflate=layer==1?0.25f:part>=4 && layer==2?0.5f:1.0f;
+            Matrix_Scale((w+inflate)/w,(h+inflate)/h,(d+inflate)/d,MTXMODE_APPLY);
+        }
         gSPMatrix(POLY_OPA_DISP++,MATRIX_NEWMTX(play->state.gfxCtx),G_MTX_MODELVIEW|G_MTX_LOAD|G_MTX_NOPUSH);
+        for(pass=0;pass<(layer>=2 && (sPose.equipment_flags&(1u<<(equipment+4)))?2:1);pass++) {
+        if(pass) {
+            sArmorGlintDraws++;
+            gDPSetBlendColor(POLY_OPA_DISP++,0,0,0,1);
+            gDPSetCombineMode(POLY_OPA_DISP++,G_CC_MODULATEIA_PRIM,G_CC_MODULATEIA_PRIM);
+            gDPSetPrimColor(POLY_OPA_DISP++,0,0,190,130,255,105);
+            gDPSetRenderMode(POLY_OPA_DISP++,G_RM_AA_ZB_XLU_SURF,G_RM_AA_ZB_XLU_SURF2);
+        } else {
+            gDPSetBlendColor(POLY_OPA_DISP++,0,0,0,128);
+            gDPSetCombineMode(POLY_OPA_DISP++,G_CC_DECALRGBA,G_CC_DECALRGBA);
+            gDPSetRenderMode(POLY_OPA_DISP++,G_RM_AA_ZB_TEX_EDGE,G_RM_AA_ZB_TEX_EDGE2);
+        }
         for(face=0;face<6;face++) {
-            const SteveSkinFace* texture=&sSkinFaces[part][layer][face];
+            const SteveSkinFace* texture=layer<2?&sSkinFaces[part][layer][face]:pass?
+                &sArmorGlintFaces[armorPart][(play->gameplayFrames/3)%8][face]:&sArmorFaces[armorPart][face];
             Vtx* vertices=(Vtx*)Graph_Alloc(play->state.gfxCtx,4*sizeof(Vtx));
             memset(vertices,0,4*sizeof(Vtx));
             for(i=0;i<4;i++) {
@@ -378,8 +399,12 @@ static void SteveSkinLimb(PlayState* play,int part,float x,float y,float z,float
             gSPVertex(POLY_OPA_DISP++,(uintptr_t)vertices,4,0);
             gSP2Triangles(POLY_OPA_DISP++,0,1,2,0,0,2,3,0);
         }
+        }
         Matrix_Pop();
     }
+    gDPSetCombineMode(POLY_OPA_DISP++,G_CC_DECALRGBA,G_CC_DECALRGBA);
+    gDPSetRenderMode(POLY_OPA_DISP++,G_RM_AA_ZB_TEX_EDGE,G_RM_AA_ZB_TEX_EDGE2);
+    gDPSetBlendColor(POLY_OPA_DISP++,0,0,0,128);
     gDPSetAlphaCompare(POLY_OPA_DISP++,G_AC_NONE);
     Matrix_Pop();
     CLOSE_DISPS(play->state.gfxCtx);
@@ -462,7 +487,7 @@ int SteveActor_Draw(Actor* actor, PlayState* play) {
         Matrix_Push(); Matrix_Translate(1.9f,12,0,MTXMODE_APPLY);
         Matrix_RotateX(gait,MTXMODE_APPLY); SteveSkinLimb(play,5,0,-6,0,2,6,2); Matrix_Pop();
     }
-    if(sPose.chest.id) {
+    if(sPose.chest.id && !(sPose.equipment_flags&2)) {
         float spread=sPose.flying?0.9f:0.2f;
         Matrix_Push(); Matrix_Translate(-2,20,-2.2f,MTXMODE_APPLY);
         Matrix_RotateZ(spread,MTXMODE_APPLY);SteveSprite(play,&sElytraWing,-4,-8,0,5,10);Matrix_Pop();

@@ -26,6 +26,8 @@ import net.minecraft.network.packet.c2s.common.SyncedClientOptions;
 import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.RegistryOps;
+import net.minecraft.registry.RegistryKeys;
+import net.minecraft.enchantment.Enchantments;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ConnectedClientData;
 import net.minecraft.server.network.ServerPlayNetworkHandler;
@@ -103,6 +105,7 @@ public final class SteveBridgeMod implements ModInitializer {
         player.getHungerManager().setFoodLevel(12);
         playerFile = server.getSavePath(WorldSavePath.ROOT).resolve("steve-player.json");
         loadPlayer(server);
+        equipDefaultArmor(server);
         // Bound the generated world to a single small, persistent arena.
         for (int bx = -8; bx <= 8; bx++) for (int bz = -8; bz <= 8; bz++)
             world.setBlockState(new BlockPos(bx, 64, bz), Blocks.BEDROCK.getDefaultState());
@@ -217,6 +220,8 @@ public final class SteveBridgeMod implements ModInitializer {
                 player.getInventory().setStack(i, ItemStack.OPTIONAL_CODEC.parse(ops,items.get(i)).getOrThrow());
             player.equipStack(EquipmentSlot.OFFHAND, ItemStack.OPTIONAL_CODEC.parse(ops,data.get("offhand")).getOrThrow());
             if(data.has("chest")) player.equipStack(EquipmentSlot.CHEST,ItemStack.OPTIONAL_CODEC.parse(ops,data.get("chest")).getOrThrow());
+            for(var slot:new EquipmentSlot[]{EquipmentSlot.HEAD,EquipmentSlot.LEGS,EquipmentSlot.FEET})
+                if(data.has(slot.getName())) player.equipStack(slot,ItemStack.OPTIONAL_CODEC.parse(ops,data.get(slot.getName())).getOrThrow());
             player.setHealth(Math.max(0,Math.min(20,data.get("health").getAsFloat())));
             player.getHungerManager().setFoodLevel(Math.max(0,Math.min(20,data.get("food").getAsInt())));
             if(!data.has("equipmentVersion")) {
@@ -238,6 +243,8 @@ public final class SteveBridgeMod implements ModInitializer {
             data.add("inventory",items);
             data.add("offhand",ItemStack.OPTIONAL_CODEC.encodeStart(ops,player.getOffHandStack()).getOrThrow());
             data.add("chest",ItemStack.OPTIONAL_CODEC.encodeStart(ops,player.getEquippedStack(EquipmentSlot.CHEST)).getOrThrow());
+            for(var slot:new EquipmentSlot[]{EquipmentSlot.HEAD,EquipmentSlot.LEGS,EquipmentSlot.FEET})
+                data.add(slot.getName(),ItemStack.OPTIONAL_CODEC.encodeStart(ops,player.getEquippedStack(slot)).getOrThrow());
             data.addProperty("health",player.getHealth());
             data.addProperty("food",player.getHungerManager().getFoodLevel());
             Path temporary = playerFile.resolveSibling("steve-player.json.tmp");
@@ -249,6 +256,18 @@ public final class SteveBridgeMod implements ModInitializer {
         for(int i=0;i<36;i++) if(player.getInventory().getStack(i).isOf(stack.getItem())) return;
         if(player.getInventory().getStack(preferred).isEmpty()) {player.getInventory().setStack(preferred,stack);return;}
         for(int i=9;i<36;i++) if(player.getInventory().getStack(i).isEmpty()) {player.getInventory().setStack(i,stack);return;}
+    }
+    private void equipDefaultArmor(MinecraftServer server) {
+        var registry=server.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT);
+        var slots=new EquipmentSlot[]{EquipmentSlot.HEAD,EquipmentSlot.CHEST,EquipmentSlot.LEGS,EquipmentSlot.FEET};
+        var items=new net.minecraft.item.Item[]{Items.DIAMOND_HELMET,Items.DIAMOND_CHESTPLATE,Items.DIAMOND_LEGGINGS,Items.DIAMOND_BOOTS};
+        for(int i=0;i<slots.length;i++) {
+            if(!player.getEquippedStack(slots[i]).isEmpty()) continue;
+            var armor=new ItemStack(items[i]);
+            armor.addEnchantment(registry.getOrThrow(Enchantments.PROTECTION),4);
+            armor.addEnchantment(registry.getOrThrow(Enchantments.UNBREAKING),3);
+            player.equipStack(slots[i],armor);
+        }
     }
     private void read(ByteBuffer p) {
         sequence = p.getLong(0); inputTime = p.getLong(8);
@@ -281,7 +300,7 @@ public final class SteveBridgeMod implements ModInitializer {
                 player.getInventory().setStack(arg1,first); commandResult=1;
             } else if(operation==2 && arg0>=0 && arg0<36) {
                 ItemStack first=player.getInventory().getStack(arg0);
-                if(first.isEmpty()||first.isOf(Items.ELYTRA)) {
+                if(first.isEmpty()||first.isOf(Items.ELYTRA)||first.isOf(Items.DIAMOND_CHESTPLATE)) {
                     player.getInventory().setStack(arg0,player.getEquippedStack(EquipmentSlot.CHEST));
                     player.equipStack(EquipmentSlot.CHEST,first); commandResult=1;
                 }
@@ -376,7 +395,7 @@ public final class SteveBridgeMod implements ModInitializer {
         return held.isOf(Items.IRON_PICKAXE)?1:held.isOf(Items.IRON_SWORD)?2:held.isOf(Items.COOKED_BEEF)?3:
             held.isOf(Items.BOW)?4:held.isOf(Items.ARROW)?6:held.isOf(Items.TNT)?7:
             held.isOf(Items.FLINT_AND_STEEL)?8:held.isOf(Items.ELYTRA)?9:held.isOf(Items.NETHERITE_AXE)?10:
-            held.isOf(Items.SHIELD)?11:held.isEmpty()?0:5;
+            held.isOf(Items.SHIELD)?11:held.isOf(Items.DIAMOND_CHESTPLATE)?12:held.isEmpty()?0:5;
     }
     private void item(ByteBuffer p, int offset, ItemStack stack) {
         p.putInt(offset, stack.isEmpty() ? 0 : Registries.ITEM.getRawId(stack.getItem()));
@@ -401,6 +420,14 @@ public final class SteveBridgeMod implements ModInitializer {
         p.putInt(252,1 | (kind(held)<<8));
         for(int i=0;i<36;i++) { ItemStack stack=player.getInventory().getStack(i); item(p,256+i*16,stack); p.putInt(832+i*4,kind(stack)); }
         item(p,976,player.getEquippedStack(EquipmentSlot.CHEST)); p.putInt(992,kind(player.getEquippedStack(EquipmentSlot.CHEST)));
+        int armorFlags=0;
+        var armorSlots=new EquipmentSlot[]{EquipmentSlot.HEAD,EquipmentSlot.CHEST,EquipmentSlot.LEGS,EquipmentSlot.FEET};
+        var armorItems=new net.minecraft.item.Item[]{Items.DIAMOND_HELMET,Items.DIAMOND_CHESTPLATE,Items.DIAMOND_LEGGINGS,Items.DIAMOND_BOOTS};
+        for(int i=0;i<armorSlots.length;i++) {
+            var stack=player.getEquippedStack(armorSlots[i]);
+            if(stack.isOf(armorItems[i])) {armorFlags|=1<<i;if(stack.hasGlint())armorFlags|=1<<(i+4);}
+        }
+        p.putInt(1068,armorFlags);
         p.putInt(996,commandResult); p.putLong(1000,commandAck);
         p.putLong(1008,attackEvent); p.putFloat(1016,attackDamage); p.putInt(1020,attackTarget);
         p.putLong(1024,tntEvent);

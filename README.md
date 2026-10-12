@@ -55,6 +55,14 @@ The override defaults on in this patched build when the backend is connected. Se
 
 ## Native transport
 
+Steve automatically equips diamond armor in empty armor slots at startup, enchanted
+with Protection IV and Unbreaking III. The native meshes use the official diamond
+equipment textures with an animated purple glint masked to their cutouts. Chestplate
+and elytra swap through **Equip selected / swap chest**; the chestplate stays in the
+selected inventory slot during flight. Armor and enchantments persist with inventory.
+Equipment presence and glint bits occupy response byte 1068 and the existing C-ABI
+pose padding, preserving packet sizes and protocol version 3.
+
 `src/bridge/protocol.hpp` specifies a 128-byte input and a 1280-byte response, both aligned to 64 bytes. Protocol version 3 adds 36 inventory slots, equipment, acknowledged commands, combat results, flight velocity and eight TNT states. The two SPSC rings expose mapped slots directly. Acquire/release atomics transfer ownership; the daemon owns mapping lifecycle and updates a heartbeat without relaying or copying packets between rings. JNI exposes the same slots as direct byte buffers. Snapshot copies are made only for frontend interpolation and Java reads fields directly from the mapped input.
 
 The input carries transform, buttons and preserved press edges, target/lock-on, slot, scene, damage and respawn flags. The response carries vanilla numeric item registry IDs, components represented by damage/count/remaining durability, nine hotbar slots, hand/swing, health, destruction stage, eight audio events and a monotonic block-break acknowledgement. Transport version and size are checked. Exactly one producer and consumer own each ring. Full rings apply backpressure; unconsumed slots are never overwritten. Multiple button edges within a single Minecraft tick coalesce.

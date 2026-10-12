@@ -11,9 +11,10 @@ BASE = f"https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/{
 DEST = ROOT / "cache/minecraft-assets"
 DEST.mkdir(parents=True, exist_ok=True)
 paths = ["entity/player/wide/steve.png", "entity/equipment/wings/elytra.png", "entity/shield_base.png"]
-paths += [f"item/{name}.png" for name in ("iron_pickaxe", "iron_sword", "cooked_beef", "bow", "arrow", "netherite_axe", "flint_and_steel", "elytra")]
+paths += [f"item/{name}.png" for name in ("iron_pickaxe", "iron_sword", "cooked_beef", "bow", "arrow", "netherite_axe", "flint_and_steel", "elytra", "diamond_chestplate")]
 paths += [f"block/{name}.png" for name in ("stone", "cobblestone", "tnt_side", "tnt_top", "tnt_bottom")]
 paths += ["gui/container/inventory.png"]
+paths += ["entity/equipment/humanoid/diamond.png", "entity/equipment/humanoid_leggings/diamond.png", "misc/enchanted_glint_armor.png"]
 manifest = {"revision": REVISION, "source": BASE, "files": {}}
 for name in paths:
     target = DEST / name
@@ -47,7 +48,7 @@ for part, (u,v,ou,ov,w,h,d) in enumerate(parts):
         for face, (x,y,fw,fh) in enumerate(rectangles):
             identifier = f"sSkin_{part}_{layer}_{face}"
             pixels = rgba16(skin.crop((x,y,x+fw,y+fh)))
-            lines.append(f"static const u8 {identifier}[] = {{" + ",".join(hex(p) for p in pixels) + "};")
+            lines.append(f"alignas(8) static const u8 {identifier}[] = {{" + ",".join(hex(p) for p in pixels) + "};")
             descriptors.append(f"{{{identifier},{fw},{fh}}}")
         layers.append("{" + ",".join(descriptors) + "}")
     faces.append("{" + ",".join(layers) + "}")
@@ -58,7 +59,7 @@ descriptors = ["{NULL,0,0}"]
 for kind,name in enumerate(icons[1:],1):
     img=Image.open(DEST/name).convert("RGBA")
     identifier=f"sItem_{kind}"
-    lines.append(f"static const u8 {identifier}[] = {{"+",".join(hex(p) for p in rgba16(img))+"};")
+    lines.append(f"alignas(8) static const u8 {identifier}[] = {{"+",".join(hex(p) for p in rgba16(img))+"};")
     descriptors.append(f"{{{identifier},{img.width},{img.height}}}")
 lines.append("static const SteveSkinFace sItemFaces[11] = {"+",".join(descriptors)+"};")
 for name,path,rect in [("sTntTop","block/tnt_top.png",None),("sTntBottom","block/tnt_bottom.png",None),("sStoneFace","block/stone.png",None),
@@ -66,8 +67,40 @@ for name,path,rect in [("sTntTop","block/tnt_top.png",None),("sTntBottom","block
                        ("sElytraWing","entity/equipment/wings/elytra.png",(22,0,34,22))]:
     img=Image.open(DEST/path).convert("RGBA")
     if rect: img=img.crop(rect)
-    lines.append(f"static const u8 {name}Pixels[] = {{"+",".join(hex(p) for p in rgba16(img))+"};")
+    lines.append(f"alignas(8) static const u8 {name}Pixels[] = {{"+",".join(hex(p) for p in rgba16(img))+"};")
     lines.append(f"static const SteveSkinFace {name} = {{{name}Pixels,{img.width},{img.height}}};")
+
+armor = Image.open(DEST/"entity/equipment/humanoid/diamond.png").convert("RGBA")
+leggings = Image.open(DEST/"entity/equipment/humanoid_leggings/diamond.png").convert("RGBA")
+armor_faces=[]
+glint=Image.open(DEST/"misc/enchanted_glint_armor.png").convert("RGBA").resize((16,16),Image.Resampling.NEAREST)
+glint_faces=[]
+for part,(su,sv,w,h,d) in enumerate([(0,0,8,8,8),(16,16,8,12,4),(40,16,4,12,4),
+                                    (40,16,4,12,4),(0,16,4,12,4),(0,16,4,12,4),
+                                    (0,16,4,12,4),(0,16,4,12,4)]):
+    image=leggings if part>=6 else armor
+    descriptors=[]
+    phase_descriptors=[[] for _ in range(8)]
+    for face,(x,y,fw,fh) in enumerate([(su+d,sv,w,d),(su+d+w,sv,w,d),(su,sv+d,d,h),
+                                      (su+d,sv+d,w,h),(su+d+w,sv+d,d,h),(su+d+w+d,sv+d,w,h)]):
+        identifier=f"sArmor_{part}_{face}"
+        cropped=image.crop((x,y,x+fw,y+fh))
+        lines.append(f"alignas(8) static const u8 {identifier}[] = {{"+",".join(hex(p) for p in rgba16(cropped))+"};")
+        descriptors.append(f"{{{identifier},{fw},{fh}}}")
+        for phase in range(8):
+            overlay=Image.new("RGBA",cropped.size)
+            for gy in range(fh):
+                for gx in range(fw):
+                    r,g,b,_=glint.getpixel(((gx+phase*2)%16,(gy+phase)%16))
+                    # Preserve the helmet opening and other armor cutouts in every phase.
+                    overlay.putpixel((gx,gy),(r,g,b,cropped.getpixel((gx,gy))[3] if max(r,g,b)>20 else 0))
+            name=f"sArmorGlint_{part}_{phase}_{face}"
+            lines.append(f"alignas(8) static const u8 {name}[] = {{"+",".join(hex(p) for p in rgba16(overlay))+"};")
+            phase_descriptors[phase].append(f"{{{name},{fw},{fh}}}")
+    armor_faces.append("{"+",".join(descriptors)+"}")
+    glint_faces.append("{"+",".join("{"+",".join(faces)+"}" for faces in phase_descriptors)+"}")
+lines.append("static const SteveSkinFace sArmorFaces[8][6] = {"+",".join(armor_faces)+"};")
+lines.append("static const SteveSkinFace sArmorGlintFaces[8][8][6] = {"+",".join(glint_faces)+"};")
 generated = ROOT / "src/soh_mod/generated"
 generated.mkdir(exist_ok=True)
 (generated / "minecraft_textures.inc").write_text("\n".join(lines) + "\n")
