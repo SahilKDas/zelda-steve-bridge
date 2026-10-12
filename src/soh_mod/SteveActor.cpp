@@ -133,8 +133,10 @@ static Vec3s sBlockVertices[] = {
 };
 static CollisionPoly sBlockPolys[12];
 static SurfaceType sBlockSurface[] = {{{0,0}}};
+// Ground-camera queries index this list even for surfaces with no camera override.
+static CamData sBlockCamera[] = {{CAM_SET_NONE,0,NULL}};
 static CollisionHeader sBlockCollision = {
-    {-10,-10,-10},{10,10,10},8,sBlockVertices,12,sBlockPolys,sBlockSurface,NULL,0,NULL,0
+    {-10,-10,-10},{10,10,10},8,sBlockVertices,12,sBlockPolys,sBlockSurface,sBlockCamera,0,NULL,0
 };
 static void SteveBlock_NoUpdate(Actor* actor, PlayState* play) { (void)actor; (void)play; }
 void SteveActor_Reset(PlayState* play) {
@@ -319,7 +321,7 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
         }
     }
     sLastHealth=gSaveContext.health;
-    if(SteveUi_IsOpen()) {memset(&input->cur,0,sizeof(input->cur));memset(&input->press,0,sizeof(input->press));}
+    if(SteveUi_IsOpen() || sTestMode==1) {memset(&input->cur,0,sizeof(input->cur));memset(&input->press,0,sizeof(input->press));}
     else if(sConnected) {
         if(sPose.item_kind==1 || sPose.item_kind==2 || sPose.item_kind==10) {
             input->cur.button&=~BTN_B;input->press.button&=~BTN_B;
@@ -425,7 +427,11 @@ int SteveActor_Draw(Actor* actor, PlayState* play) {
     sRenderedFrames++;
     OPEN_DISPS(play->state.gfxCtx);
     Gfx_SetupDL_25Opa(play->state.gfxCtx);
-    gSPClearGeometryMode(POLY_OPA_DISP++,G_LIGHTING | G_CULL_BACK);
+    // Setup 25 uses two cycles. TEXEL0 in its second cycle samples tile 1,
+    // which still contains the preceding scene texture. Our meshes load tile 0.
+    gDPSetCycleType(POLY_OPA_DISP++,G_CYC_1CYCLE);
+    gDPSetRenderMode(POLY_OPA_DISP++,G_RM_AA_ZB_TEX_EDGE,G_RM_AA_ZB_TEX_EDGE2);
+    gSPClearGeometryMode(POLY_OPA_DISP++,G_LIGHTING | G_CULL_BACK | G_FOG | G_TEXTURE_GEN | G_TEXTURE_GEN_LINEAR);
     gDPSetCombineMode(POLY_OPA_DISP++,G_CC_PRIMITIVE,G_CC_PRIMITIVE);
     Matrix_Push();
     Matrix_Translate(actor->world.pos.x,actor->world.pos.y,actor->world.pos.z,MTXMODE_NEW);
@@ -477,7 +483,7 @@ int SteveActor_Draw(Actor* actor, PlayState* play) {
         }
     }
     CLOSE_DISPS(play->state.gfxCtx);
-    {
+    if (CVarGetInteger("gEnhancements.SteveBridgeDebugOverlay",0)) {
         GfxPrint printer;
         int i;
         OPEN_DISPS(play->state.gfxCtx);

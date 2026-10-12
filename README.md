@@ -27,6 +27,11 @@ Use `-AcceptEula` only after accepting the [Minecraft EULA](https://www.minecraf
 
 ## Controls and game behavior
 
+The default keyboard mapping is **WASD** to move, **X** for A (use/place/ignite),
+**C** for B (mine/attack), **R** to shield, **Z** to target, **Left/Right arrows** for previous/next
+hotbar slot, and **Space** for Start/pause. **I** opens the inventory and **V** toggles
+gliding while airborne. SoH controller bindings can be changed in its input settings.
+
 | SoH input | Minecraft action |
 |---|---|
 | B | Mine with the pickaxe; otherwise attack/swing |
@@ -36,17 +41,17 @@ Use `-AcceptEula` only after accepting the [Minecraft EULA](https://www.minecraf
 | C-left / C-right | Previous / next hotbar slot |
 | Z | Supply the current lock-on target |
 | I | Open/close Steve's 36-slot inventory; click two slots to swap |
-| G, while airborne | Toggle gliding with an equipped elytra |
+| V, while airborne | Toggle gliding with an equipped elytra |
 
 Select TNT in the hotbar and tap A to place it ahead of Steve. Select flint and steel and tap A to ignite the nearest placed charge in reach. Up to eight charges are synchronized with native meshes and collision; Minecraft drives their fuse and detonation, and SoH applies the explosion through its bomb actor. Charges belong to the current scene and are cleared when it unloads.
 
-Select an elytra in the inventory and use **Equip selected / swap chest**. Walk off a ledge and press G to glide; landing ends flight. Minecraft supplies glide velocity, while the native player hook applies movement and checks Zelda's floor and walls. Netherite-axe attacks use a Minecraft combat proxy for damage, cooldown and durability, then enter Zelda's normal attack-collider pipeline for enemy damage and reactions. Nearby enemies can be attacked directly or through Z targeting.
+Select an elytra in the inventory and use **Equip selected / swap chest**. Walk off a ledge and press V to glide; landing ends flight. Minecraft supplies glide velocity, while the native player hook applies movement and checks Zelda's floor and walls. Netherite-axe attacks use a Minecraft combat proxy for damage, cooldown and durability, then enter Zelda's normal attack-collider pipeline for enemy damage and reactions. Nearby enemies can be attacked directly or through Z targeting.
 
 The initial hotbar contains an iron pickaxe, iron sword, eight cooked beef, a bow, a netherite axe, 16 TNT, flint and steel, an elytra and 64 arrows. A shield occupies the offhand. Older bridge saves receive the new equipment once without overwriting occupied slots. Player inventory and chest equipment use vanilla item-component codecs and save every five seconds and at shutdown in `bridge-world/steve-player.json`. Zelda damage is translated to Minecraft health; returned health drives Zelda's hearts. Respawn requests restore health and hunger.
 
 The backend uses a bounded flat arena with a bedrock floor and a stone mining target. The native cube has dynamic collision and disappears after the authoritative mining acknowledgement. Entering a different Zelda scene anchors the arena at the settled player position and restores its test block. Enemy combat uses relative positions, and TNT maintains native world positions while Minecraft simulates the corresponding arena objects. This bridge does not turn every Zelda surface into Minecraft terrain or add a crafting interface. Zelda collisions and animation-derived limb positions are retained before replacing render commands.
 
-The override defaults on in this patched build when the backend is connected. Set `gEnhancements.SteveBridge` to `0` to disable it. Without fresh backend state, Link's normal renderer is used. SoH's normal controller mapping remains available; hotbar counts, selection, remaining durability and destruction stage are shown in the native overlay.
+The override defaults on in this patched build when the backend is connected. Set `gEnhancements.SteveBridge` to `0` to disable it. Without fresh backend state, Link's normal renderer is used. SoH's normal controller mapping remains available; item counts and durability are available in the inventory. The diagnostic text overlay is disabled by default; developers can opt in with `gEnhancements.SteveBridgeDebugOverlay=1`.
 
 ## Native transport
 

@@ -39,7 +39,7 @@ class Inventory final : public Ship::GuiWindow {
         inventoryDraws++;
         StevePose pose{};
         if(!SteveBridge_GetPose(&pose)) {ImGui::TextUnformatted("Waiting for Minecraft...");return;}
-        ImGui::TextUnformatted("I: close  |  Click two slots to swap  |  G: glide while airborne");
+        ImGui::TextUnformatted("I: close  |  Click two slots to swap  |  V: glide while airborne");
         ImGui::Text("Health %.0f/20   Attack recharge %.0f%%",pose.health,pose.combat_cooldown*100);
         auto slot=[&](int index) {
             ImGui::PushID(index);
@@ -86,7 +86,7 @@ extern "C" int SteveUi_IsOpen() { return inventory && inventory->IsVisible(); }
 extern "C" void SteveUi_Frame(int scancode) {
     if(!inventory) {inventory=std::make_shared<Inventory>();gameGui()->AddGuiWindow(inventory);}
     if(scancode==static_cast<int>(Ship::KbScancode::LUS_KB_I)) inventory->ToggleVisibility();
-    if(scancode==static_cast<int>(Ship::KbScancode::LUS_KB_G) && !inventory->IsVisible()) SteveBridge_RequestCommand(4,0,0);
+    if(scancode==static_cast<int>(Ship::KbScancode::LUS_KB_V) && !inventory->IsVisible()) SteveBridge_RequestCommand(4,0,0);
 }
 extern "C" void SteveActor_RequestExit(void) { Ship::Context::GetRawInstance()->GetWindow()->Close(); }
 extern "C" void SteveUi_TestInventory(int open) {if(inventory){if(open)inventory->Show();else inventory->Hide();}}
