@@ -25,7 +25,10 @@ static Vec3f sOrigin;
 static uint64_t sLastTick, sBlockEvent;
 static int sLastHealth, sBlockAlive;
 static DynaPolyActor sBlock;
-static DynaPolyActor sTnt;
+static DynaPolyActor sTnt[8];
+static int sTntCollision[8];
+static uint64_t sChargeToken[8];
+static int sChargeFuse[8];
 static int sTntAlive;
 static uint64_t sTntEvent,sAttackEvent;
 static ColliderQuad sAxe;
@@ -47,6 +50,9 @@ static int sTestMode=-1, sTestFrame, sRenderedFrames;
 static uint32_t sTestPick, sTestFood, sTestBow, sTestArrows;
 static int sTestShield, sTestDamage, sTestCollision;
 static int sTestBasePassed,sTestTntPlaced,sTestTntPrimed,sTestTntExplosion,sTestSwap,sTestGlide;
+static uint32_t sTestEnemyToken;
+static int sTestEnemyHealth,sTestEnemyDamaged;
+static Vec3f sTestFlightStart;
 static void SteveActor_TestInput(SteveInput* packet) {
     if (sTestMode < 0) sTestMode=getenv("STEVE_IN_GAME_TEST") != NULL;
     if (!sTestMode) return;
@@ -85,10 +91,16 @@ static void SteveActor_TestInput(SteveInput* packet) {
     if(sTestFrame>=415 && sTestFrame<420) {packet->slot=6;packet->buttons=1;}
     if(sTestFrame==435) sTestTntPrimed=sPose.tnt_fuse>0 && sPose.hotbar[6].durability==63;
     if(sTestFrame==520) {
-        Actor* enemy=Actor_Spawn(&sPlay->actorCtx,sPlay,ACTOR_EN_DEKUBABA,
+        Actor* enemy=Actor_Spawn(&sPlay->actorCtx,sPlay,ACTOR_EN_IK,
             GET_PLAYER(sPlay)->actor.world.pos.x,GET_PLAYER(sPlay)->actor.world.pos.y,
-            GET_PLAYER(sPlay)->actor.world.pos.z+30,0,0,0,0);
-        if(enemy) enemy->colChkInfo.health=40;
+            GET_PLAYER(sPlay)->actor.world.pos.z+30,0,0,0,1);
+        if(enemy) {enemy->colChkInfo.health=40;sTestEnemyToken=(uint32_t)(((uintptr_t)enemy>>4)^sSceneSerial);}
+    }
+    if(sTestFrame==525 || sTestFrame==670) {
+        Actor* enemy=sPlay->actorCtx.actorLists[ACTORCAT_ENEMY].head;
+        for(;enemy;enemy=enemy->next)if((uint32_t)(((uintptr_t)enemy>>4)^sSceneSerial)==sTestEnemyToken)break;
+        if(sTestFrame==525 && enemy)sTestEnemyHealth=enemy->colChkInfo.health;
+        if(sTestFrame==670)sTestEnemyDamaged=sTestEnemyHealth>0 && (!enemy || enemy->colChkInfo.health<sTestEnemyHealth);
     }
     if(sTestFrame>=525 && sTestFrame<650) {packet->slot=4;if(sTestFrame%20<5)packet->buttons=2;}
     if(sTestFrame==680) SteveBridge_RequestCommand(1,4,10);
@@ -97,18 +109,20 @@ static void SteveActor_TestInput(SteveInput* packet) {
     if(sTestFrame==760) SteveBridge_RequestCommand(2,7,0);
     if(sTestFrame==780) {
         GET_PLAYER(sPlay)->actor.world.pos.y+=120;
+        sTestFlightStart=GET_PLAYER(sPlay)->actor.world.pos;
         GET_PLAYER(sPlay)->actor.bgCheckFlags&=~BGCHECKFLAG_GROUND;
         packet->y=GET_PLAYER(sPlay)->actor.world.pos.y/20;packet->flags&=~2u;
         SteveBridge_RequestCommand(4,0,0);
     }
-    if(sTestFrame==810) sTestGlide=sPose.flying;
+    if(sTestFrame==810) sTestGlide=sPose.flying &&
+        (fabsf(GET_PLAYER(sPlay)->actor.world.pos.x-sTestFlightStart.x)+fabsf(GET_PLAYER(sPlay)->actor.world.pos.z-sTestFlightStart.z)>5);
     if(sTestFrame==900) {
         FILE* log=fopen("steve-in-game-test.log","w");
-        int passed=sTestBasePassed && sTestTntPlaced && sTestTntPrimed && sTestTntExplosion &&
-            sNativeAxeHits>=2 && sTestSwap && SteveUi_TestDraws()>3 && SteveUi_TextureCount()==10 && sTestGlide;
-        if(log) {fprintf(log,"%s native SoH: rendered=%d mining=%llu TNT_place=%d TNT_prime=%d TNT_explode=%d axe_collisions=%d inventory_swap=%d inventory_draws=%d textures=%d elytra=%d\n",
+        int passed=sTestBasePassed && sTestTntPlaced && sTestTntPrimed && sTestTntExplosion>=2 &&
+            sNativeAxeHits>=2 && sTestEnemyDamaged && sTestSwap && SteveUi_TestDraws()>3 && SteveUi_TextureCount()==10 && sTestGlide;
+        if(log) {fprintf(log,"%s native SoH: rendered=%d mining=%llu TNT_place=%d TNT_prime=%d TNT_explode=%d axe_collisions=%d inventory_swap=%d inventory_draws=%d textures=%d elytra=%d fuse=%d charge_fuse=%d enemy_damaged=%d\n",
             passed?"PASS":"FAIL",sRenderedFrames,(unsigned long long)sPose.block_event,sTestTntPlaced,sTestTntPrimed,sTestTntExplosion,
-            sNativeAxeHits,sTestSwap,SteveUi_TestDraws(),SteveUi_TextureCount(),sTestGlide);fclose(log);}
+            sNativeAxeHits,sTestSwap,SteveUi_TestDraws(),SteveUi_TextureCount(),sTestGlide,sPose.tnt_fuse,sPose.charges[0].fuse,sTestEnemyDamaged);fclose(log);}
         if(getenv("STEVE_IN_GAME_TEST_EXIT")) SteveActor_RequestExit();
     }
 }
@@ -125,7 +139,8 @@ static void SteveBlock_NoUpdate(Actor* actor, PlayState* play) { (void)actor; (v
 void SteveActor_Reset(PlayState* play) {
     if (sPlay == play && sBlockAlive && sBlock.bgId < BG_ACTOR_MAX)
         DynaPoly_DeleteBgActor(play,&play->colCtx.dyna,sBlock.bgId);
-    if(sPlay==play && sTntAlive && sTnt.bgId<BG_ACTOR_MAX) DynaPoly_DeleteBgActor(play,&play->colCtx.dyna,sTnt.bgId);
+    if(sPlay==play) {int i;for(i=0;i<8;i++)if(sTntCollision[i] && sTnt[i].bgId<BG_ACTOR_MAX)DynaPoly_DeleteBgActor(play,&play->colCtx.dyna,sTnt[i].bgId);}
+    memset(sTntCollision,0,sizeof(sTntCollision));memset(sChargeToken,0,sizeof(sChargeToken));
     if(sAxeInitialized) {Collider_DestroyQuad(play,&sAxe);sAxeInitialized=0;}
     sTntAlive=0;sTntEvent=0;sAttackEvent=0;sWasFlying=0;
     sPlay = NULL; sBlockAlive = 0; sConnected = 0; sLastTick = 0;
@@ -207,7 +222,7 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
         packet.target_token=(uint32_t)(((uintptr_t)player->focusActor>>4) ^ sSceneSerial);
         packet.target_health=player->focusActor->colChkInfo.health;
     }
-    if(!packet.target_enemy && sPose.item_kind==10) {
+    if(!packet.target_enemy && (sPose.item_kind==10 || sPose.item_kind==2)) {
         Actor* enemy=play->actorCtx.actorLists[ACTORCAT_ENEMY].head;
         Actor* nearest=NULL;float best=60*60;
         for(;enemy;enemy=enemy->next) {
@@ -233,8 +248,19 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
         if (sBlock.bgId < BG_ACTOR_MAX) DynaPoly_DeleteBgActor(play,&play->colCtx.dyna,sBlock.bgId);
         sBlockAlive=0;
     }
+    if(!sConnected && sTntAlive) {
+        int i;for(i=0;i<8;i++)if(sTntCollision[i]) {
+            if(sTnt[i].bgId<BG_ACTOR_MAX)DynaPoly_DeleteBgActor(play,&play->colCtx.dyna,sTnt[i].bgId);
+            sTntCollision[i]=0;
+        }
+        sTntAlive=0;
+    }
     if (sConnected && sPose.tick != sLastTick) {
         int sound;
+        if(sTestMode && sTestTntExplosion==1) {
+            Actor* explosive=play->actorCtx.actorLists[ACTORCAT_EXPLOSIVE].head;
+            for(;explosive;explosive=explosive->next)if(explosive->id==ACTOR_EN_BOM && explosive->params==BOMB_EXPLOSION)sTestTntExplosion=2;
+        }
         if (sPose.block_id && !sBlockAlive) SteveBlock_Create(play);
         sLastTick=sPose.tick;
         sBlockEvent=sPose.block_event;
@@ -268,27 +294,39 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
                 }
             }
         }
-        if(sPose.tnt_fuse==-1 && !sTntAlive) {
-            memset(&sTnt,0,sizeof(sTnt));sTnt.actor.id=ACTOR_BG_HEAVY_BLOCK;sTnt.actor.update=SteveBlock_NoUpdate;
-            sTnt.actor.world.pos.x=sOrigin.x+sPose.tnt_x*20;
-            sTnt.actor.world.pos.y=sOrigin.y+sPose.tnt_y*20+10;
-            sTnt.actor.world.pos.z=sOrigin.z+sPose.tnt_z*20;
-            sTnt.actor.scale.x=sTnt.actor.scale.y=sTnt.actor.scale.z=1;
-            DynaPolyActor_Init(&sTnt,DPM_UNK);sTnt.bgId=DynaPoly_SetBgActor(play,&play->colCtx.dyna,&sTnt.actor,&sBlockCollision);sTntAlive=1;
-        }
-        if(sPose.tnt_fuse!=-1 && sTntAlive) {DynaPoly_DeleteBgActor(play,&play->colCtx.dyna,sTnt.bgId);sTntAlive=0;}
-        if(sPose.tnt_event!=sTntEvent) {
-            sTntEvent=sPose.tnt_event;
-            if(sPose.tnt_fuse==0) {
-                Actor* bomb=Actor_Spawn(&play->actorCtx,play,ACTOR_EN_BOM,sOrigin.x+sPose.tnt_x*20,
-                    sOrigin.y+sPose.tnt_y*20+10,sOrigin.z+sPose.tnt_z*20,0,0,0,0);
-                if(bomb) {((EnBom*)bomb)->timer=0;sTestTntExplosion=1;}
+        {
+            int i;sTntAlive=0;
+            for(i=0;i<8;i++) {
+                const SteveTnt* charge=&sPose.charges[i];DynaPolyActor* tnt=&sTnt[i];
+                if(sTntCollision[i] && (charge->fuse!=-1 || sChargeToken[i]!=charge->token)) {
+                    if(tnt->bgId<BG_ACTOR_MAX)DynaPoly_DeleteBgActor(play,&play->colCtx.dyna,tnt->bgId);sTntCollision[i]=0;
+                }
+                if(charge->token && charge->fuse==-1 && !sTntCollision[i]) {
+                    memset(tnt,0,sizeof(*tnt));tnt->actor.id=ACTOR_BG_HEAVY_BLOCK;tnt->actor.update=SteveBlock_NoUpdate;
+                    tnt->actor.world.pos.x=sOrigin.x+charge->x*20;tnt->actor.world.pos.y=sOrigin.y+charge->y*20+10;tnt->actor.world.pos.z=sOrigin.z+charge->z*20;
+                    tnt->actor.scale.x=tnt->actor.scale.y=tnt->actor.scale.z=1;
+                    DynaPolyActor_Init(tnt,DPM_UNK);tnt->bgId=DynaPoly_SetBgActor(play,&play->colCtx.dyna,&tnt->actor,&sBlockCollision);sTntCollision[i]=tnt->bgId<BG_ACTOR_MAX;
+                }
+                if(charge->token && charge->fuse==0 && (sChargeToken[i]!=charge->token || sChargeFuse[i]!=0)) {
+                    Actor* bomb=Actor_Spawn(&play->actorCtx,play,ACTOR_EN_BOM,sOrigin.x+charge->x*20,
+                        sOrigin.y+charge->y*20+10,sOrigin.z+charge->z*20,0,0,0,0);
+                    if(bomb){((EnBom*)bomb)->timer=0;sTestTntExplosion=1;}else sTestTntExplosion=-1;
+                }
+                sChargeToken[i]=charge->token;sChargeFuse[i]=charge->fuse;sTntAlive+=sTntCollision[i];
             }
+            sTntEvent=sPose.tnt_event;
         }
     }
     sLastHealth=gSaveContext.health;
     if(SteveUi_IsOpen()) {memset(&input->cur,0,sizeof(input->cur));memset(&input->press,0,sizeof(input->press));}
-    else if(sConnected && sPose.item_kind==10) {input->cur.button&=~BTN_B;input->press.button&=~BTN_B;}
+    else if(sConnected) {
+        if(sPose.item_kind==1 || sPose.item_kind==2 || sPose.item_kind==10) {
+            input->cur.button&=~BTN_B;input->press.button&=~BTN_B;
+        }
+        if(sPose.item_kind==3 || sPose.item_kind==4 || sPose.item_kind==7 || sPose.item_kind==8) {
+            input->cur.button&=~BTN_A;input->press.button&=~BTN_A;
+        }
+    }
 }
 void SteveActor_PostUpdate(Actor* actor,PlayState* play) {
     if(sConnected && sPose.flying) {
@@ -429,9 +467,14 @@ int SteveActor_Draw(Actor* actor, PlayState* play) {
         SteveTexturedCube(play,sBlock.actor.world.pos.x,sBlock.actor.world.pos.y,sBlock.actor.world.pos.z,
             &sStoneFace,&sStoneFace,&sStoneFace);
     }
-    if(sPose.tnt_fuse>=-1 && sPose.tnt_fuse!=0)
-        SteveTexturedCube(play,sOrigin.x+sPose.tnt_x*20,sOrigin.y+sPose.tnt_y*20+10,sOrigin.z+sPose.tnt_z*20,
-            &sItemFaces[7],&sTntTop,&sTntBottom);
+    {
+        int i;for(i=0;i<8;i++) {
+            const SteveTnt* charge=&sPose.charges[i];
+            if(charge->token && charge->fuse>=-1 && charge->fuse!=0)
+                SteveTexturedCube(play,sOrigin.x+charge->x*20,sOrigin.y+charge->y*20+10,sOrigin.z+charge->z*20,
+                    &sItemFaces[7],&sTntTop,&sTntBottom);
+        }
+    }
     CLOSE_DISPS(play->state.gfxCtx);
     {
         GfxPrint printer;

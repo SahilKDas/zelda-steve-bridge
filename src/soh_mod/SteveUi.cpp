@@ -72,7 +72,7 @@ class Inventory final : public Ship::GuiWindow {
         for(int col=0;col<9;col++){if(col)ImGui::SameLine();slot(col);}
         ImGui::SeparatorText("Chest equipment");
         ImGui::Text("%s  durability %u",pose.chest.id?"Elytra":"Empty",pose.chest.durability);
-        ImGui::BeginDisabled(selected<0);
+        ImGui::BeginDisabled(selected<0 || (pose.inventory_kind[selected]!=9 && pose.inventory[selected].count!=0));
         if(ImGui::Button("Equip selected / swap chest")) {SteveBridge_RequestCommand(2,static_cast<uint32_t>(selected),0);selected=-1;}
         ImGui::EndDisabled();
         if(ImGui::Button("Cancel selection")) selected=-1;

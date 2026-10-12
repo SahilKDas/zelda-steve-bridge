@@ -25,8 +25,10 @@ for name in paths:
 
 def rgba16(img):
     rgba = img.convert("RGBA")
-    return [((r >> 3) << 11) | ((g >> 3) << 6) | ((b >> 3) << 1) | (a >= 128)
-            for r, g, b, a in (rgba.get_flattened_data() if hasattr(rgba,"get_flattened_data") else rgba.getdata())]
+    values = [((r >> 3) << 11) | ((g >> 3) << 6) | ((b >> 3) << 1) | (a >= 128)
+              for r, g, b, a in (rgba.get_flattened_data() if hasattr(rgba,"get_flattened_data") else rgba.getdata())]
+    # Fast3D consumes big-endian N64 texels, even on a little-endian host.
+    return [byte for value in values for byte in value.to_bytes(2,"big")]
 
 skin = Image.open(DEST / paths[0]).convert("RGBA")
 assert skin.size == (64, 64)
@@ -34,7 +36,7 @@ parts = [(0,0,32,0,8,8,8), (16,16,16,32,8,12,4),
          (40,16,40,32,4,12,4), (32,48,48,48,4,12,4),
          (0,16,0,32,4,12,4), (16,48,0,48,4,12,4)]
 lines = ["/* Generated from pinned Minecraft assets; do not edit. */",
-         "typedef struct SteveSkinFace { const u16* pixels; int width,height; } SteveSkinFace;"]
+         "typedef struct SteveSkinFace { const u8* pixels; int width,height; } SteveSkinFace;"]
 faces = []
 for part, (u,v,ou,ov,w,h,d) in enumerate(parts):
     layers = []
@@ -45,7 +47,7 @@ for part, (u,v,ou,ov,w,h,d) in enumerate(parts):
         for face, (x,y,fw,fh) in enumerate(rectangles):
             identifier = f"sSkin_{part}_{layer}_{face}"
             pixels = rgba16(skin.crop((x,y,x+fw,y+fh)))
-            lines.append(f"static const u16 {identifier}[] = {{" + ",".join(hex(p) for p in pixels) + "};")
+            lines.append(f"static const u8 {identifier}[] = {{" + ",".join(hex(p) for p in pixels) + "};")
             descriptors.append(f"{{{identifier},{fw},{fh}}}")
         layers.append("{" + ",".join(descriptors) + "}")
     faces.append("{" + ",".join(layers) + "}")
@@ -56,7 +58,7 @@ descriptors = ["{NULL,0,0}"]
 for kind,name in enumerate(icons[1:],1):
     img=Image.open(DEST/name).convert("RGBA")
     identifier=f"sItem_{kind}"
-    lines.append(f"static const u16 {identifier}[] = {{"+",".join(hex(p) for p in rgba16(img))+"};")
+    lines.append(f"static const u8 {identifier}[] = {{"+",".join(hex(p) for p in rgba16(img))+"};")
     descriptors.append(f"{{{identifier},{img.width},{img.height}}}")
 lines.append("static const SteveSkinFace sItemFaces[11] = {"+",".join(descriptors)+"};")
 for name,path,rect in [("sTntTop","block/tnt_top.png",None),("sTntBottom","block/tnt_bottom.png",None),("sStoneFace","block/stone.png",None),
@@ -64,7 +66,7 @@ for name,path,rect in [("sTntTop","block/tnt_top.png",None),("sTntBottom","block
                        ("sElytraWing","entity/equipment/wings/elytra.png",(22,0,34,22))]:
     img=Image.open(DEST/path).convert("RGBA")
     if rect: img=img.crop(rect)
-    lines.append(f"static const u16 {name}Pixels[] = {{"+",".join(hex(p) for p in rgba16(img))+"};")
+    lines.append(f"static const u8 {name}Pixels[] = {{"+",".join(hex(p) for p in rgba16(img))+"};")
     lines.append(f"static const SteveSkinFace {name} = {{{name}Pixels,{img.width},{img.height}}};")
 generated = ROOT / "src/soh_mod/generated"
 generated.mkdir(exist_ok=True)

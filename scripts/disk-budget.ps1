@@ -3,8 +3,10 @@ $ErrorActionPreference = 'Stop'
 $workspacePath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $projectPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 function Measure-Workspace {
-    return [long](Get-ChildItem -LiteralPath $workspacePath -Force -Recurse -File |
-        Measure-Object -Property Length -Sum).Sum
+    [long]$total=0
+    $directory=[IO.DirectoryInfo]::new($workspacePath)
+    foreach($entry in $directory.EnumerateFiles('*',[IO.SearchOption]::AllDirectories)) { $total+=$entry.Length }
+    return $total
 }
 $bytes = Measure-Workspace
 if ($bytes -ge 4000000000 -and $CleanObjects) {

@@ -68,6 +68,9 @@ public final class SteveBridgeMod implements ModInitializer {
     private int tntFuse=-2;
     private boolean flying;
     private Vec3d flightVelocity=Vec3d.ZERO;
+    private static class Charge { BlockPos position; Vec3d nativePosition=Vec3d.ZERO; TntEntity entity; int fuse=-2,unresolvedTicks; long token; }
+    private final Charge[] charges=new Charge[8];
+    public SteveBridgeMod() {for(int i=0;i<charges.length;i++)charges[i]=new Charge();}
     private Path playerFile;
     private final ArrayDeque<Integer> sounds = new ArrayDeque<>();
 
@@ -158,7 +161,7 @@ public final class SteveBridgeMod implements ModInitializer {
                 hand = 2; abortMining();
                 if ((pressed & 2) != 0) {
                     attackTarget=targetToken; attackDamage=0;
-                    Vec3d targetPosition=new Vec3d(tx-originX+0.5,ty-originY+65,tz-originZ+0.5);
+                    Vec3d targetPosition=new Vec3d(player.getX()+tx-x,player.getY()+ty-y,player.getZ()+tz-z);
                     if(targetEnemy!=0 && targetToken!=0 && targetHealth>0 && player.squaredDistanceTo(targetPosition)<9) {
                         combatProxy.setPosition(targetPosition);
                         combatProxy.setHealth(Math.min(1024,targetHealth*2));
@@ -261,6 +264,12 @@ public final class SteveBridgeMod implements ModInitializer {
             scene = newScene; originX = x; originY = y; originZ = z; abortMining();
             world.setBlockState(new BlockPos(0,65,2),Blocks.STONE.getDefaultState());
             flying=false;
+            for(Charge charge:charges) {
+                if(charge.entity!=null)charge.entity.discard();
+                if(charge.position!=null && world.getBlockState(charge.position).isOf(Blocks.TNT))world.setBlockState(charge.position,Blocks.AIR.getDefaultState());
+                charge.entity=null;charge.position=null;charge.fuse=-2;charge.token=0;charge.unresolvedTicks=0;
+            }
+            tntFuse=-2;placedTnt=null;primedTnt=null;
         }
         long command=p.getLong(80);
         if(command>commandAck) {
@@ -316,25 +325,48 @@ public final class SteveBridgeMod implements ModInitializer {
     private void sound(int value) { if (sounds.size() < 64) sounds.addLast(value); }
     private void useBlock(ItemStack held) {
         boolean placing=held.isOf(Items.TNT);
+        Charge selected=null;
         BlockPos base;
         if(held.isOf(Items.TNT)) {
+            for(Charge charge:charges)if(charge.fuse==-2||charge.fuse==0){selected=charge;break;}
+            if(selected==null)return;
             Vec3d ahead=new Vec3d(player.getX(),player.getY(),player.getZ()).add(player.getRotationVec(1).multiply(2));
             base=BlockPos.ofFloored(ahead.x,64,ahead.z);
+            if(!world.getBlockState(base.up()).isAir())return;
         } else {
-            if(placedTnt==null || player.squaredDistanceTo(placedTnt.toCenterPos())>25) return;
-            base=placedTnt;
+            double nearest=25;
+            for(Charge charge:charges)if(charge.fuse==-1 && charge.position!=null) {
+                double distance=charge.nativePosition.squaredDistanceTo(new Vec3d(x-originX,y-originY,z-originZ));
+                if(distance<nearest){selected=charge;nearest=distance;}
+            }
+            if(selected==null)return;
+            base=selected.position;
         }
         var result=player.interactionManager.interactBlock(player,world,held,Hand.MAIN_HAND,
                 new BlockHitResult(base.toCenterPos(),Direction.UP,base,false));
         if(result.isAccepted()) {
-            if(placing) { placedTnt=base.up(); tntFuse=-1; tntEvent++; }
+            if(placing) {
+                placedTnt=base.up(); tntFuse=-1; tntEvent++; selected.position=placedTnt;selected.fuse=-1;selected.entity=null;selected.token=tntEvent;
+                selected.nativePosition=new Vec3d(x-originX+placedTnt.getX()+0.5-player.getX(),y-originY,z-originZ+placedTnt.getZ()+0.5-player.getZ());
+            }
             else {
-                var entities=world.getEntitiesByClass(TntEntity.class,new Box(base).expand(2),e->true);
-                if(!entities.isEmpty()) { primedTnt=entities.getFirst(); tntFuse=primedTnt.getFuse(); tntEvent++; }
+                var entities=world.getEntitiesByClass(TntEntity.class,new Box(base).expand(0.75),e->true);
+                if(!entities.isEmpty()) { primedTnt=entities.getFirst(); tntFuse=primedTnt.getFuse(); tntEvent++;selected.entity=primedTnt;selected.fuse=tntFuse; }
             }
         }
     }
     private void updateTnt() {
+        for(Charge charge:charges) {
+            if(charge.entity==null && (charge.fuse==-1 || charge.fuse==-3) && !world.getBlockState(charge.position).isOf(Blocks.TNT)) {
+                var entities=world.getEntitiesByClass(TntEntity.class,new Box(charge.position).expand(0.75),e->true);
+                if(!entities.isEmpty()){charge.entity=entities.getFirst();charge.fuse=charge.entity.getFuse();charge.unresolvedTicks=0;}
+                else charge.fuse=++charge.unresolvedTicks>=5?0:-3;
+            }
+            if(charge.entity!=null) {
+                if(charge.entity.isRemoved()){charge.entity=null;charge.fuse=0;}
+                else charge.fuse=charge.entity.getFuse();
+            }
+        }
         if(primedTnt!=null) {
             if(primedTnt.isRemoved()) { primedTnt=null; tntFuse=0; tntEvent++; }
             else tntFuse=primedTnt.getFuse();
@@ -372,10 +404,17 @@ public final class SteveBridgeMod implements ModInitializer {
         p.putInt(996,commandResult); p.putLong(1000,commandAck);
         p.putLong(1008,attackEvent); p.putFloat(1016,attackDamage); p.putInt(1020,attackTarget);
         p.putLong(1024,tntEvent);
-        if(placedTnt!=null) { p.putFloat(1032,placedTnt.getX()); p.putFloat(1036,placedTnt.getY()-65); p.putFloat(1040,placedTnt.getZ()); }
+        if(placedTnt!=null) for(Charge charge:charges)if(placedTnt.equals(charge.position)) {
+            p.putFloat(1032,(float)charge.nativePosition.x);p.putFloat(1036,(float)charge.nativePosition.y);p.putFloat(1040,(float)charge.nativePosition.z);break;
+        }
         p.putInt(1044,tntFuse);
         p.putFloat(1048,(float)flightVelocity.x); p.putFloat(1052,(float)flightVelocity.y); p.putFloat(1056,(float)flightVelocity.z);
         p.putInt(1060,flying?1:0); p.putFloat(1064,player.getAttackCooldownProgress(0));
+        for(int i=0;i<8;i++) {
+            Charge charge=charges[i];int offset=1088+i*24;
+            if(charge.position!=null) {p.putFloat(offset,(float)charge.nativePosition.x);p.putFloat(offset+4,(float)charge.nativePosition.y);p.putFloat(offset+8,(float)charge.nativePosition.z);}
+            p.putInt(offset+12,charge.fuse);p.putLong(offset+16,charge.token);
+        }
         NativeBridge.publish();
     }
 }

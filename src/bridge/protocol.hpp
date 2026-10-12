@@ -28,6 +28,7 @@ struct alignas(64) OotToMcPacket {
     std::array<std::uint32_t,4> reserved{};
 };
 struct Item { std::uint32_t id{}, metadata{}, count{}, durability{}; };
+struct TntState { Vec3 position{}; std::int32_t fuse{-2}; std::uint64_t token{}; };
 struct alignas(64) McToOotPacket {
     std::uint64_t tick{}, time_ns{}, input_sequence{};
     Item held{};
@@ -53,13 +54,15 @@ struct alignas(64) McToOotPacket {
     Vec3 flight_velocity{};
     std::uint32_t flying{};
     float combat_cooldown{};
-    std::array<std::uint32_t,53> reserved{};
+    std::array<std::uint32_t,5> reserved{};
+    std::array<TntState,8> charges{};
 };
 static_assert(sizeof(OotToMcPacket)==128 && alignof(OotToMcPacket)==64);
 static_assert(sizeof(McToOotPacket)==1280 && alignof(McToOotPacket)==64);
 static_assert(offsetof(OotToMcPacket,command_sequence)==80);
 static_assert(offsetof(McToOotPacket,inventory)==256 && offsetof(McToOotPacket,command_ack)==1000);
 static_assert(offsetof(McToOotPacket,tnt_event)==1024 && offsetof(McToOotPacket,flying)==1060);
+static_assert(offsetof(McToOotPacket,charges)==1088 && sizeof(TntState)==24);
 static_assert(offsetof(OotToMcPacket, target)==48);
 static_assert(offsetof(OotToMcPacket, damage)==64 && offsetof(OotToMcPacket, health_capacity)==76);
 static_assert(offsetof(McToOotPacket, hotbar)==96 && offsetof(McToOotPacket, block_event)==240);

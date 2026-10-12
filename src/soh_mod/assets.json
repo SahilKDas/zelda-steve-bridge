@@ -1,26 +1,24 @@
 {
-  "format": "native-procedural-rigid-model-v1",
+  "format": "minecraft-wide-player-rig-v2",
   "source": "SteveActor.c",
-  "units": "OoT world units; 20 units = one Minecraft block",
+  "asset_repository": "https://github.com/InventivetalentDev/minecraft-assets",
+  "asset_revision": "0c2358f50e81e34def33b75af34fc65409893dc0",
+  "skin": "assets/minecraft/textures/entity/player/wide/steve.png",
+  "skin_size": [64,64],
+  "units": "Skin pixels; scale 1.125 OoT units per pixel, 20 OoT units per Minecraft block",
   "forward": "+Z",
-  "mesh": { "primitive": "indexed_cube", "vertices": 8, "triangles": 12, "textures": [] },
+  "mesh": {"primitive":"six textured cuboid faces","outer_skin_layers":true,"filter":"nearest"},
   "skeleton": [
-    { "limb": "head", "center": [0,31,0], "half_extents": [6,6,6] },
-    { "limb": "torso", "center": [0,20,0], "half_extents": [6,6,3] },
-    { "limb": "right_arm", "pivot": [-8,25,0], "center": [0,-5,0], "half_extents": [2,6,3] },
-    { "limb": "left_arm", "pivot": [8,25,0], "center": [0,-5,0], "half_extents": [2,6,3] },
-    { "limb": "right_leg", "center": [-3,7,0], "half_extents": [3,7,3] },
-    { "limb": "left_leg", "center": [3,7,0], "half_extents": [3,7,3] }
+    {"limb":"head","center":[0,28,0],"size":[8,8,8],"uv":[0,0],"outer_uv":[32,0]},
+    {"limb":"torso","center":[0,18,0],"size":[8,12,4],"uv":[16,16],"outer_uv":[16,32]},
+    {"limb":"right_arm","pivot":[-5,22,0],"local_center":[-1,-4,0],"size":[4,12,4],"uv":[40,16],"outer_uv":[40,32]},
+    {"limb":"left_arm","pivot":[5,22,0],"local_center":[1,-4,0],"size":[4,12,4],"uv":[32,48],"outer_uv":[48,48]},
+    {"limb":"right_leg","pivot":[-2,12,0],"local_center":[0,-6,0],"size":[4,12,4],"uv":[0,16],"outer_uv":[0,32]},
+    {"limb":"left_leg","pivot":[2,12,0],"local_center":[0,-6,0],"size":[4,12,4],"uv":[16,48],"outer_uv":[0,48]}
   ],
-  "animations": {
-    "idle": "neutral rigid limbs",
-    "walk": "opposed sinusoidal arm and leg rotations from SoH movement",
-    "mine_swing": "Minecraft swing progress drives right-arm X rotation",
-    "attack": "Minecraft swing progress drives right-arm X rotation",
-    "block": "left arm rotated -1.2 radians with offhand shield",
-    "consume": "right arm rotated -1.3 radians",
-    "bow": "right arm rotated -1.3 radians with procedural bow"
-  },
-  "held_meshes": ["pickaxe","sword","food","bow","block","arrow","shield"],
-  "arena": { "cube_half_extents": [10,10,10], "offset": [0,10,40], "collision_triangles": 12 }
+  "animations":["idle","walk","mine_swing","attack","block","consume","bow","elytra_glide"],
+  "held_textures":["iron_pickaxe","iron_sword","cooked_beef","bow","cobblestone","arrow","tnt_side","flint_and_steel","elytra","netherite_axe","shield_base"],
+  "elytra_texture":"assets/minecraft/textures/entity/equipment/wings/elytra.png",
+  "arena":{"cube_half_extents":[10,10,10],"offset":[0,10,40],"collision_triangles":12},
+  "tnt":{"maximum_active_charges":8,"cube_half_extents":[10,10,10],"textures":["tnt_side","tnt_top","tnt_bottom"]}
 }
