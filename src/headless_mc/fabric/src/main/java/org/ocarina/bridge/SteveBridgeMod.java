@@ -39,6 +39,8 @@ import net.minecraft.util.Hand;
 import net.minecraft.util.Unit;
 import net.minecraft.component.type.FireworksComponent;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
@@ -78,6 +80,9 @@ public final class SteveBridgeMod implements ModInitializer {
     private int rocketBoostTicks;
     private static class Cell { BlockPos shadow; Vec3d position=Vec3d.ZERO; int kind,flags; long token; boolean active; }
     private final Cell[] cells=new Cell[128];
+    private final Map<Integer,Cell[]> sceneCells=new HashMap<>();
+    private boolean sceneKnown;
+    private final Map<Integer,Charge[]> sceneUnlitCharges=new HashMap<>();
     private Cell miningCell;
     private Vec3d terrainTarget;
     private long cellToken;
@@ -94,6 +99,12 @@ public final class SteveBridgeMod implements ModInitializer {
     }
     private void start(MinecraftServer server) {
         world = server.getOverworld();
+        sceneCells.clear();sceneUnlitCharges.clear();
+        for(int xx=-12;xx<=12;xx++)for(int zz=-12;zz<=12;zz++)for(int yy=60;yy<=80;yy++){
+            BlockPos block=new BlockPos(xx,yy,zz);if(world.getBlockState(block).isOf(Blocks.TNT))world.removeBlock(block,false);
+        }
+        for(TntEntity tnt:world.getEntitiesByClass(TntEntity.class,new Box(-16,60,-16,16,90,16),entity->true))tnt.discard();
+        for(int i=0;i<cells.length;i++)world.removeBlock(new BlockPos(i%16-8,70,i/16-4),false);
         GameProfile profile = new GameProfile(UUID.fromString("22eba9f5-d003-4fd3-a9bf-028a92fca065"), "SteveBridge");
         player = new ServerPlayerEntity(server, world, profile, SyncedClientOptions.createDefault()) {
             @Override public boolean damage(ServerWorld world,DamageSource source,float amount) {
@@ -188,10 +199,10 @@ public final class SteveBridgeMod implements ModInitializer {
             abortMining();
             if (!player.isUsingItem()) player.setCurrentHand(Hand.OFF_HAND);
             hand = 3;
-        } else if ((buttons & 2) != 0) {
+        } else if (((buttons|pressed) & 2) != 0) {
             if (player.isUsingItem()) player.stopUsingItem();
             ItemStack held = player.getMainHandStack();
-            if ((held.isOf(Items.DIAMOND_PICKAXE) || held.isOf(Items.DIAMOND_AXE) && (flags&4)!=0) && targetEnemy==0) { hand = 1; mine(); }
+            if (((flags&4)!=0 || held.isOf(Items.DIAMOND_PICKAXE)) && targetEnemy==0) { hand = 1; mine(); }
             else {
                 hand = 2; abortMining();
                 if ((pressed & 2) != 0) {
@@ -322,10 +333,12 @@ public final class SteveBridgeMod implements ModInitializer {
         flags = (flags & 1) | p.getInt(72);
         targetToken=p.getInt(100); targetHealth=p.getFloat(104); targetEnemy=p.getInt(108);
         if (scene != newScene) {
+            retainSceneCells();sceneKnown=true;
             scene = newScene; originX = x; originY = y; originZ = z; abortMining();
             world.setBlockState(new BlockPos(0,65,2),Blocks.STONE.getDefaultState());
             flying=false;
             for(Cell cell:cells){if(cell.active&&cell.shadow!=null)world.removeBlock(cell.shadow,false);cell.active=false;cell.token=0;}
+            restoreSceneCells(newScene);
             miningCell=null;terrainTarget=null;
             for(Charge charge:charges) {
                 if(charge.entity!=null)charge.entity.discard();
@@ -333,6 +346,7 @@ public final class SteveBridgeMod implements ModInitializer {
                 charge.entity=null;charge.position=null;charge.fuse=-2;charge.token=0;charge.unresolvedTicks=0;
             }
             tntFuse=-2;placedTnt=null;primedTnt=null;
+            restoreUnlitCharges(newScene);
         }
         long command=p.getLong(80);
         if(command>commandAck) {
@@ -350,7 +364,7 @@ public final class SteveBridgeMod implements ModInitializer {
                 }
             } else if(operation==3 && arg0>=0 && arg0<10) { slot=arg0; commandResult=1; }
             else if(operation==4 && player.getEquippedStack(EquipmentSlot.CHEST).isOf(Items.ELYTRA) && (flags&2)==0) {
-                flying=!flying;
+                flying=true;
                 flightVelocity=player.getRotationVec(1).multiply(0.6).add(0,-0.05,0); commandResult=1;
             }
         }
@@ -436,6 +450,45 @@ public final class SteveBridgeMod implements ModInitializer {
                 cell.flags=0;cell.token=++cellToken;cell.active=true;restock();
             }
             return;
+        }
+    }
+    private void retainSceneCells() {
+        if(!sceneKnown)return;
+        Cell[] saved=new Cell[cells.length];
+        for(int i=0;i<cells.length;i++) {
+            Cell source=cells[i],copy=new Cell();
+            copy.position=source.position;copy.kind=source.kind;copy.flags=source.flags;
+            copy.token=source.token;copy.active=source.active;saved[i]=copy;
+        }
+        sceneCells.put(scene&65535,saved);
+        Charge[] unlit=new Charge[charges.length];
+        for(int i=0;i<charges.length;i++)if(charges[i].fuse==-1 && charges[i].position!=null){
+            Charge source=charges[i],copy=new Charge();copy.position=source.position;copy.token=source.token;copy.fuse=-1;
+            copy.nativePosition=source.nativePosition.add(originX,originY,originZ);unlit[i]=copy;
+        }
+        sceneUnlitCharges.put(scene&65535,unlit);
+    }
+    private void restoreSceneCells(int key) {
+        Cell[] saved=sceneCells.get(key&65535);
+        if(saved==null)return;
+        for(int i=0;i<cells.length;i++) {
+            Cell source=saved[i],cell=cells[i];
+            cell.position=source.position;cell.kind=source.kind;cell.flags=source.flags;
+            cell.token=source.token;cell.active=source.active;cell.shadow=null;
+            if(cell.active && cell.flags==0) {
+                cell.shadow=new BlockPos(i%16-8,70,i/16-4);
+                world.setBlockState(cell.shadow.down(),Blocks.BEDROCK.getDefaultState());
+                world.setBlockState(cell.shadow,cell.kind==13?Blocks.OBSIDIAN.getDefaultState():Blocks.COBBLESTONE.getDefaultState());
+            }
+        }
+    }
+    private void restoreUnlitCharges(int key){
+        Charge[] saved=sceneUnlitCharges.get(key&65535);if(saved==null)return;
+        for(int i=0;i<charges.length;i++)if(saved[i]!=null){
+            Charge copy=saved[i],charge=charges[i];charge.position=copy.position;charge.token=copy.token;charge.fuse=-1;
+            charge.nativePosition=copy.nativePosition.subtract(new Vec3d(originX,originY,originZ));
+            world.setBlockState(charge.position,Blocks.TNT.getDefaultState());
+            if(placedTnt==null){placedTnt=charge.position;tntFuse=-1;tntEvent++;}
         }
     }
     private void sound(int value) { if (sounds.size() < 64) sounds.addLast(value); }
@@ -526,7 +579,7 @@ public final class SteveBridgeMod implements ModInitializer {
             var stack=player.getEquippedStack(armorSlots[i]);
             if(stack.isOf(armorItems[i])) {armorFlags|=1<<i;if(stack.hasGlint())armorFlags|=1<<(i+4);}
         }
-        p.putInt(1068,armorFlags);
+        p.putInt(1068,armorFlags);p.putInt(1072,scene);
         p.putInt(996,commandResult); p.putLong(1000,commandAck);
         p.putLong(1008,attackEvent); p.putFloat(1016,attackDamage); p.putInt(1020,attackTarget);
         p.putLong(1024,tntEvent);

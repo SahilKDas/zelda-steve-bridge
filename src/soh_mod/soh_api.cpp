@@ -9,9 +9,11 @@ steve::Client client;
 struct Command { uint64_t sequence; uint32_t operation,arg0,arg1; };
 std::deque<Command> commands;
 uint64_t commandSequence{};
+uint32_t expectedScene{};
 }
 extern "C" int SteveBridge_Frame(const SteveInput* input,StevePose* pose) {
     if(!input || !pose || !client.connect("default")) return 0;
+    expectedScene=input->scene;
     steve::OotToMcPacket packet{};
     packet.position={input->x,input->y,input->z};
     packet.yaw=input->yaw; packet.pitch=input->pitch;
@@ -56,6 +58,7 @@ extern "C" int SteveBridge_GetPose(StevePose* pose) {
     pose->tnt_x=state.tnt_position.x; pose->tnt_y=state.tnt_position.y; pose->tnt_z=state.tnt_position.z;
     pose->flight_x=state.flight_velocity.x; pose->flight_y=state.flight_velocity.y; pose->flight_z=state.flight_velocity.z;
     pose->flying=state.flying; pose->combat_cooldown=state.combat_cooldown;
+    if(state.reserved[1]!=expectedScene){pose->tnt_fuse=-2;pose->flying=0;pose->flight_x=pose->flight_y=pose->flight_z=0;return p.connected;}
     for(unsigned i=0;i<8;i++) {
         const auto& tnt=state.charges[i];pose->charges[i]={tnt.position.x,tnt.position.y,tnt.position.z,tnt.fuse,tnt.token};
     }

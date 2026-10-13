@@ -7,10 +7,12 @@
 #include <algorithm>
 void require(bool condition,const char* message){if(!condition)throw std::runtime_error(message);}
 int main() try {
- SteveInput input{};StevePose pose{};input.scene=static_cast<uint32_t>(steve::now_ns());input.flags=3;
+ SteveInput input{};StevePose pose{};input.scene=0x1100eeu;input.flags=3;
  auto run=[&](int frames){for(int i=0;i<frames;i++){SteveBridge_Frame(&input,&pose);std::this_thread::sleep_for(std::chrono::microseconds(16667));}};
  auto await=[&](auto predicate,const char* message,int seconds=6){auto until=std::chrono::steady_clock::now()+std::chrono::seconds(seconds);while(!predicate()&&std::chrono::steady_clock::now()<until)run(1);require(predicate(),message);};
  await([&]{return pose.tick>0;},"backend startup",180);input.flags=2;run(200);
+ require(std::none_of(std::begin(pose.cells),std::end(pose.cells),[](const auto& cell){return cell.active;}),"new server session has no saved terrain edits");
+
  const uint32_t kinds[10]={10,1,3,8,5,13,9,14,15,7};
  for(unsigned i=0;i<10;i++)require(pose.inventory_kind[i]==kinds[i],"exact ten-slot starter loadout");
  require(pose.inventory[5].count==32&&pose.inventory[8].count==1,"obsidian and totem counts");
@@ -32,15 +34,23 @@ int main() try {
  input.slot=0;input.target_enemy=1;input.target_token=42;input.target_health=100;input.locked=1;input.tx=0;input.ty=0;input.tz=2;run(80);
  auto attack=pose.attack_event;auto axe=pose.inventory[0].durability;input.buttons=steve::b;run(8);input.buttons=0;run(8);require(pose.attack_event>attack&&pose.attack_damage>0&&pose.inventory[0].durability<axe,"diamond axe combat");
  auto placed=[&](unsigned kind){return std::any_of(std::begin(pose.cells),std::end(pose.cells),[&](const auto& cell){return cell.active&&cell.kind==kind&&cell.flags==0;});};
+ run(80);attack=pose.attack_event;input.buttons=steve::b;run(1);input.buttons=0;await([&]{return pose.attack_event>attack;},"quick left-click edge attacks");
  input.target_enemy=0;input.flags=10;input.tx=1.5f;input.ty=0.5f;input.tz=1.5f;input.slot=5;input.buttons=steve::a;run(6);input.buttons=0;run(8);require(placed(13)&&pose.inventory[5].count==31,"obsidian placement");
  input.flags=6;input.slot=0;input.buttons=steve::b;run(8);input.buttons=0;run(8);require(!placed(13)&&pose.inventory[5].count==32,"diamond axe obsidian recovery");
  input.slot=4;input.flags=10;input.tx=2.5f;input.buttons=steve::a;run(6);input.buttons=0;run(8);require(placed(5)&&pose.inventory[4].count==64,"unlimited cobblestone placement");
  input.slot=1;input.flags=6;input.buttons=steve::b;await([&]{return !placed(5);},"placed cobblestone mining");input.buttons=0;run(8);
  input.tx=0.5f;input.ty=-0.5f;input.tz=1.5f;event=pose.block_event;input.buttons=steve::b;await([&]{return pose.block_event>event;},"Zelda terrain mining");input.buttons=0;run(8);
  require(std::any_of(std::begin(pose.cells),std::end(pose.cells),[](const auto& cell){return cell.active&&(cell.flags&1);}),"terrain cut published");
- input.flags=2;input.locked=0;input.slot=9;input.buttons=steve::a;run(6);input.buttons=0;run(8);require(pose.tnt_fuse==-1&&pose.inventory[9].count==64,"unlimited TNT placement");
+ const auto originalScene=input.scene;
+ input.flags=10;input.slot=4;input.tx=3.5f;input.ty=0.5f;input.tz=1.5f;input.buttons=steve::a;run(6);input.buttons=0;run(8);require(placed(5),"persistent block placed");
+ input.scene=(originalScene&65535u)^1u;run(15);require(!placed(5)&&std::none_of(std::begin(pose.cells),std::end(pose.cells),[](const auto& cell){return cell.active;}),"other scene has no edits");
+ input.scene=(originalScene&65535u)|0x550000u;run(15);require(placed(5)&&std::any_of(std::begin(pose.cells),std::end(pose.cells),[](const auto& cell){return cell.active&&(cell.flags&1);}),"scene block and tunnel restored with new visit serial");
+ input.slot=1;input.flags=6;input.buttons=steve::b;await([&]{return !placed(5);},"restored block mineable");input.buttons=0;run(8);
+ input.x=3;input.flags=2;input.locked=0;input.slot=9;input.buttons=steve::a;run(6);input.buttons=0;run(8);require(pose.tnt_fuse==-1&&pose.inventory[9].count==64,"unlimited TNT placement");
+ auto tntScene=input.scene;input.scene=(tntScene&65535u)^1u;run(12);require(pose.tnt_fuse==-2,"TNT isolated from other scene");
+ input.scene=tntScene+0x10000u;run(12);require(pose.tnt_fuse==-1,"unlit TNT restored across scene visit");
  input.slot=3;auto flint=pose.inventory[3].durability;input.buttons=steve::a;run(6);input.buttons=0;run(8);require(pose.tnt_fuse>0&&pose.inventory[3].durability==flint-1,"flint ignition");await([&]{return pose.tnt_fuse==0;},"TNT detonation",8);
  require(pose.inventory_kind[0]==10 && pose.inventory_kind[9]==7,"tenth-slot use preserves first slot");
  input.slot=8;run(12);for(int hit=0;hit<12&&pose.inventory[8].count;hit++){input.damage=20;run(1);input.damage=0;run(75);}require(pose.inventory[8].count==0&&pose.health>0,"held Totem of Undying prevents death");
- std::cout<<"PASS Minecraft protocol 4: ten slots, unlimited stacks, shield, golden apples, armor, elytra/fireworks, axe, obsidian recovery, terrain, TNT and totem\n";SteveBridge_Disconnect();
+ std::cout<<"PASS Minecraft protocol 4: ten slots, unlimited stacks, shield, golden apples, armor, elytra/fireworks, axe, obsidian recovery, session persistence, terrain, TNT and totem\n";SteveBridge_Disconnect();
 }catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}
