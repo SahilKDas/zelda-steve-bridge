@@ -33,15 +33,29 @@ The default Ocarina of Time keyboard mapping is **WASD** to move, **X** for A
 for Start/pause. Zelda uses context-sensitive A actions and automatic ledge jumps.
 Controller bindings remain configurable in SoH's input settings.
 
-Steve adds **1â€“9 and 0**, or the **mouse wheel**, to select the ten hotbar slots.
-Left/Right arrows also cycle slots. **Middle-click** (or **J**) performs a manual jump from solid ground. While airborne, tap **X** with
-cobblestone or obsidian to place a block directly beneath your feet; jump high
-enough to clear its top. **I** opens/closes the inventory: click two slots
-to swap their contents. Select the elytra there and click **Equip selected / swap
-chest**, then **right-click** (or press **V**) while airborne to toggle gliding. Select fireworks and
-**right-click** (or press **X**) during flight for a boost. Middle/right mouse
-buttons are intercepted before SoH controller mappings while this mod is enabled;
-they cannot activate Zelda buttons. Steve actions are suppressed in menus. Landing ends flight.
+Steve adds **1-9 and 0**, or the **mouse wheel**, to select the ten hotbar slots.
+Left/Right arrows also cycle slots. **Left-click** mines the aimed surface or
+attacks an enemy. Hold it for continuous mining. **Right-click** uses the held
+item: place blocks, eat, ignite TNT, or boost with fireworks during flight.
+
+**J** or **middle-click** jumps from solid ground. With an elytra equipped, press
+J while airborne to start gliding; landing ends flight automatically. Right-click
+no longer starts flight. **I** opens/closes inventory: click two slots to swap.
+Select the elytra and click **Equip selected / swap chest** before flying.
+
+**First-person is the default.** Move the mouse to look and press **P** to switch
+between first- and third-person. The view uses Steve's wide-arm skin, outer skin
+layer, held tools/blocks and a shield in the offhand. Hands render after world
+geometry; the original Minecraft crosshair and hotbar textures provide the HUD.
+Zelda's minimap is hidden in first-person to keep it clear of the hands; set
+`gEnhancements.SteveFirstPersonMinimap=1` to retain it. Cutscenes and dialogue use
+Zelda's normal camera and suppress the Minecraft HUD.
+
+A white outline marks the cell being mined; with a placeable item selected, a
+green outline marks its placement cell. During a jump it previews the cell below
+your feet once there is enough clearance. Mouse buttons are reserved before
+Zelda controller mappings. Inventory and menus suppress these gameplay actions.
+Keyboard **C** and **X** remain mining/attack and item-use alternatives.
 
 | Key | Starting item | Supply |
 |---|---|---|
@@ -66,18 +80,22 @@ stacks after use; `INF` denotes these supplies.
 
 Minecraft owns damage, tool durability, attack cooldowns, armor, food and flight.
 SoH applies attacks through its native enemy collision system and TNT explosions
-through native bomb actors. Up to eight TNT charges can exist simultaneously.
+through native bomb actors. Up to eight TNT charges can exist simultaneously in the active scene.
 Shadow-server TNT damage is suppressed to avoid applying the same native
 explosion twice. Diamond armor starts enchanted with Protection IV and Unbreaking
 III; swapping the chestplate for elytra retains the chestplate in the inventory.
 
 Static Zelda room surfaces can be excavated in 20-unit cells. The renderer clips
 holes from room triangles and collision queries skip the removed surface. Native
-floor/wall helpers let Steve descend into the holes. Placed blocks retain native
-collision. This implementation keeps at most 128 edited cells per scene; edits and
-charges clear when changing scenes, and native dynamic collision capacity can
-limit the number of simultaneously collidable blocks. Moving actors, enemies and
-animated scenery are not excavated. There is no crafting interface.
+floor/wall helpers let Steve descend into holes. Placed blocks retain native
+collision. Up to 128 edited cells are retained **per scene for the current game
+session**: cobblestone, obsidian, tunnels and unlit TNT return when you revisit.
+Edits are held in memory and clear when the game/backend restarts. Inventory still
+saves normally. Primed TNT is cleared when leaving its scene.
+
+The native engine's dynamic collision capacity can limit the number of
+simultaneously collidable blocks. Moving actors, enemies and animated scenery are
+not excavated. There is no crafting interface.
 
 The first run of this loadout version replaces the first ten inventory slots with
 the starter kit. The remaining inventory and equipment persist in
@@ -100,7 +118,7 @@ with Protection IV and Unbreaking III. The native meshes use the official diamon
 equipment textures with an animated purple glint masked to their cutouts. Chestplate
 and elytra swap through **Equip selected / swap chest**; the chestplate stays in the
 selected inventory slot during flight. Armor and enchantments persist with inventory.
-Equipment presence and glint bits occupy response byte 1068 and the existing C-ABI
+Equipment presence and glint bits occupy response byte 1068; byte 1072 echoes the full scene/visit token so stale scene geometry is never applied. Equipment uses the existing C-ABI
 pose padding, using protocol version 4.
 
 `src/bridge/protocol.hpp` specifies a 128-byte input and a 5376-byte response, both aligned to 64 bytes. Protocol version 4 includes 128 world cells alongside 36 inventory slots, equipment, acknowledged commands, combat results, flight velocity and eight TNT states. The two SPSC rings expose mapped slots directly. Acquire/release atomics transfer ownership; the daemon owns mapping lifecycle and updates a heartbeat without relaying or copying packets between rings. JNI exposes the same slots as direct byte buffers. Snapshot copies are made only for frontend interpolation and Java reads fields directly from the mapped input.
@@ -122,9 +140,9 @@ ctest --test-dir build --output-on-failure
 
 The deterministic separate-process harness (`headless_mc.exe`) exists only for transport regression tests. The production launcher uses the actual Fabric server. Native tests cover 100,000 concurrent ring transfers, wraparound/full queues, button edges, audio ordering, stale-state fallback and actor pose. The real-server test uses the same C API as SoH and verifies stone mining, drops, durability, shielding, health, golden apples, infinite stacks, fireworks boosts, locked shield, inventory swaps, unbreakable elytra, axe combo hits, TNT placement/ignition and chain reactions. Verification temporarily supplies fresh player equipment and restores the existing inventory after server shutdown.
 
-`verify-soh.ps1` launches the compiled game with an isolated temporary debug save in `runtime/soh-test`. Its opt-in actor test checks rendered frames, mining collision removal, item use, inventory rendering and swaps, TNT placement/priming/explosion, successive native axe collisions and enemy health loss, actual gliding movement, static terrain clipping/collision removal, and obsidian placement/recovery. The result is written to `runtime/soh-test/steve-in-game-test.log`. Use `-KeepOpen` to inspect the model after the test, then close the game to finish verification.
+`verify-soh.ps1` launches the compiled game with an isolated temporary debug save in `runtime/soh-test`. Its opt-in actor test checks rendered frames, mining collision removal, item use, inventory rendering and swaps, TNT placement/priming/explosion, successive native axe collisions and enemy health loss, actual gliding movement, static terrain clipping/collision removal, obsidian placement/recovery, first-person drawing, aim previews and held mouse mining. The result is written to `runtime/soh-test/steve-in-game-test.log`. Use `-KeepOpen` to inspect the model after the test, then close the game to finish verification.
 
-The final Minecraft equipment test measured 422,985,728 bytes peak working memory, 453,107,712 bytes peak private memory, and 150,770,291 bytes runtime storage. The supervisor enforces a 480,000,000-byte committed-memory Job Object limit, checks peak working memory against 500,000,000 bytes, and stops if runtime storage reaches 200,000,000 bytes. It launches without a window and kills its child on supervisor termination. The fixed spawn bypasses expensive vanilla spawn-region pre-generation.
+The final Minecraft equipment test measured 426,545,152 bytes peak working memory, 452,554,752 bytes peak private memory, and 150,776,617 bytes runtime storage. The supervisor enforces a 480,000,000-byte committed-memory Job Object limit, checks peak working memory against 500,000,000 bytes, and stops if runtime storage reaches 200,000,000 bytes. It launches without a window and kills its child on supervisor termination. The fixed spawn bypasses expensive vanilla spawn-region pre-generation.
 
 The entire parent workspace, including hidden Git history and caches, must remain below **5,000,000,000 bytes**. `disk-budget.ps1` audits that scope and warns at 4 GB. Release builds strip GCC executable symbols; SoH Release disables PDB generation and uses static dependencies. Pinned source revisions are fetched at depth one. Do not bundle an additional JDK or large world. Build/cache/runtime/native binaries and game assets are ignored. Keep the audit below the ceiling before downloading dependencies or rebuilding.
 

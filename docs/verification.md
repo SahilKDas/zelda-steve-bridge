@@ -89,7 +89,7 @@ measured 3,339,256,516 logical bytes before these documentation changes, below t
 5,000,000,000-byte ceiling. The launcher remains `Play-Steve.cmd`; the game is
 closed after the automated checks.
 
-## Manual jump and pillar placement � 2026-10-12
+## Manual jump and pillar placement — 2026-10-12
 
 J requests the native player's jumping action, preserving Zelda's floor, ceiling
 and landing handling. Airborne placement raycasts directly beneath the feet and
@@ -118,3 +118,61 @@ the forest roof to avoid an immediate collision ending the glide.
 ```text
 PASS native mouse controls: jump_peak=54.00 underfoot_block=1 landed=1 reserved=1 glide=1 fireworks_boost=1
 ```
+
+## Session sandbox and first-person release — 2026-10-13
+
+Scene edits stay in memory by Zelda scene ID. New visit serials restore blocks,
+tunnels and unlit TNT. Restarting the game/backend clears edits and shadow-arena
+TNT leftovers; inventory saves normally. Primed TNT clears on scene unload.
+Response byte 1072 echoes the complete visit token; stale geometry/flight from a
+previous visit is suppressed without changing packet/C-ABI sizes (protocol 4).
+
+Left-click mines/attacks, including held input and quick press/release edges.
+Right-click uses items and fireworks. J/middle-click jumps on ground or starts
+elytra flight in air when equipped; landing stops flight. P switches camera views.
+Focus loss and menus release held mouse actions. Mouse buttons bypass Zelda
+controller mappings while the mod is enabled.
+
+First-person uses a 70-degree FOV and Minecraft eye heights (32.4 Zelda units
+standing, 8 gliding). Official wide-skin arm cuboids/sleeves, held items/blocks and
+the shield plate/handle render in the final overlay pass after world geometry.
+Official crosshair/hotbar/selection textures and projected white mining/green
+placement outlines are drawn by ImGui. Underfoot placement shares its preview
+coordinates with the interaction packet. Cutscenes/dialogue use normal cameras.
+The Zelda minimap is hidden in first-person to avoid overlapping hands; the
+setting gEnhancements.SteveFirstPersonMinimap=1 restores it.
+
+A native framebuffer capture visually confirms the skin, held cobblestone and
+shield without minimap overlap. It captures the native layer; ImGui HUD loading
+and drawing are checked by counters. Exact pixel/animation equality to the
+Minecraft client renderer has not been established.
+
+Final real-server regression checks fixed-key session reset, scene isolation,
+restored blocks/tunnels/TNT, ignition and quick-click axe attacks:
+
+```text
+PASS Minecraft protocol 4: ten slots, unlimited stacks, shield, golden apples, armor, elytra/fireworks, axe, obsidian recovery, session persistence, terrain, TNT and totem
+```
+
+It measured 426,545,152 peak working bytes, 452,554,752 peak private bytes and
+150,776,617 runtime bytes. The subsequent native run measured 425,508,864 peak
+working bytes, 453,484,544 peak private bytes and 150,778,777 runtime bytes.
+Both satisfy the requested 500 MB RAM/200 MB runtime limits.
+
+Final native mouse/camera/preview check:
+
+```text
+PASS native mouse controls: jump_peak=54.00 underfoot_block=1 landed=1 reserved=1 glide=1 fireworks_boost=1 left_mine=1 first_person=331 aim=1
+```
+
+Final complete native release regression:
+
+```text
+PASS native SoH: rendered=1200 mining=3 TNT_place=1 TNT_prime=1 TNT_explode=2 axe_collisions=5 inventory_swap=1 inventory_draws=75 textures=14 elytra=1 fuse=0 charge_fuse=0 enemy_damaged=1 terrain=1 clipped=5544 obsidian=1/1 first_person=350
+```
+
+Both CTest cases passed, and both vendor patches passed reverse-application checks.
+The stripped executable is 33,596,416 bytes. The parent workspace measured
+3,342,028,624 logical bytes before report/commit updates, below 5 GB. Existing
+Zelda saves and production Minecraft inventory were preserved. Tests close the
+game and stop the backend; normal launch remains Play-Steve.cmd.
