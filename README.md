@@ -1,10 +1,13 @@
-# Zeldaâ€“Steve native Minecraft bridge
+# Ocarina of Mine — unfinished prototype
+
+> **Status: Unfinished and archived.** This is an experimental prototype preserved for reference. Development has stopped, and it is not a finished or supported release. Known limitations include incomplete Minecraft visual/animation parity and experimental native terrain editing. The verification report describes the checks performed, not a guarantee of production readiness.
+
 
 A native C++26 shared-memory bridge connects Ship of Harkinian 9.3.0 to a real Minecraft Java 1.21.11 Fabric server. Minecraft owns inventory, hotbar selection, durability, health, mining, TNT, combat cooldowns and elytra physics. SoH supplies its world, enemy collision/reactions and camera. Steve uses the official 1.21.11 wide skin, standard six-part dimensions and joint pivots, outer skin layers, textured held items and elytra wings.
 
 ## Windows setup
 
-This workspace is already built and packaged. Double-click `Play-Steve.cmd` to launch the local Minecraft service and SoH together. It uses `JAVA_HOME` or discovers the installed Microsoft Java 21 JDK. Closing SoH saves and stops the backend. To start in central Kokiri Forest with a
+The original local workspace was built and packaged; this source repository does not include its runtime, game assets or binaries. Follow the build/setup steps below before using `Play-Steve.cmd` to launch the local Minecraft service and SoH together. It uses `JAVA_HOME` or discovers the installed Microsoft Java 21 JDK. Closing SoH saves and stops the backend. To start in central Kokiri Forest with a
 temporary Zelda save, run `./scripts/play-forest.ps1`; existing Zelda saves are retained.
 
 Prerequisites: Windows x64, Java **21** JDK, Python with Pillow, Git, MSYS2 UCRT64 GCC supporting `-std=c++26`, CMake, and Visual Studio C++ tools with CMake/Ninja and `/std:c++latest`. The installed JDK is external to the workspace; it is not downloaded or bundled. MSVC preview mode is used because complete C++26 support is not yet available. Reflection and contracts are not required by this implementation.
