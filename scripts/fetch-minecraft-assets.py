@@ -13,7 +13,7 @@ DEST.mkdir(parents=True, exist_ok=True)
 paths = ["entity/player/wide/steve.png", "entity/equipment/wings/elytra.png", "entity/shield_base.png"]
 paths += [f"item/{name}.png" for name in ("iron_pickaxe", "iron_sword", "cooked_beef", "bow", "arrow", "netherite_axe", "flint_and_steel", "elytra", "diamond_chestplate")]
 paths += [f"block/{name}.png" for name in ("stone", "cobblestone", "tnt_side", "tnt_top", "tnt_bottom")]
-paths += ["gui/container/inventory.png"]
+paths += ["gui/container/inventory.png", "gui/sprites/hud/crosshair.png", "gui/sprites/hud/hotbar.png", "gui/sprites/hud/hotbar_selection.png"]
 paths += ["entity/equipment/humanoid/diamond.png", "entity/equipment/humanoid_leggings/diamond.png", "misc/enchanted_glint_armor.png"]
 paths += ["item/diamond_pickaxe.png","item/diamond_axe.png","item/golden_apple.png","item/firework_rocket.png","item/totem_of_undying.png","block/obsidian.png","entity/horse/horse_skeleton.png"]
 manifest = {"revision": REVISION, "source": BASE, "files": {}}
@@ -27,8 +27,9 @@ for name in paths:
 
 def rgba16(img):
     rgba = img.convert("RGBA")
-    if rgba.width % 4:
-        padded=Image.new("RGBA",((rgba.width+3)//4*4,rgba.height));padded.paste(rgba,(0,0))
+    storage_width=max(8,(rgba.width+3)//4*4)
+    if rgba.width != storage_width:
+        padded=Image.new("RGBA",(storage_width,rgba.height));padded.paste(rgba,(0,0))
         for y in range(rgba.height):
             for x in range(rgba.width,padded.width):padded.putpixel((x,y),rgba.getpixel((rgba.width-1,y)))
         rgba=padded
@@ -121,6 +122,7 @@ def cuboid_faces(name,path,parts):
             descriptors.append(f"{{{identifier},{fw},{fh}}}")
         tables.append("{"+",".join(descriptors)+"}")
     lines.append(f"static const SteveSkinFace {name}[{len(parts)}][6] = {{"+",".join(tables)+"};")
+cuboid_faces("sShieldModelFaces","entity/shield_base.png",[(0,0,12,22,1),(26,0,2,6,6)])
 cuboid_faces("sWingFaces","entity/equipment/wings/elytra.png",[(22,0,10,20,2)])
 cuboid_faces("sHorseFaces","entity/horse/horse_skeleton.png",[(0,32,10,10,22),(0,35,4,12,7),
     (0,13,6,5,7),(0,25,4,5,5),(48,21,3,11,3),(19,16,2,3,1),(42,36,3,14,2)])

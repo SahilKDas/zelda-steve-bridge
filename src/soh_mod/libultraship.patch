@@ -50,7 +50,7 @@ index 4c6a705..74124d5 100644
 \ No newline at end of file
 +                                      uint8_t resize, bool forceFixedAspect = false);
 diff --git a/src/fast/Fast3dWindow.cpp b/src/fast/Fast3dWindow.cpp
-index 2b77a5f..76613a7 100644
+index 2b77a5f..f6e9dca 100644
 --- a/src/fast/Fast3dWindow.cpp
 +++ b/src/fast/Fast3dWindow.cpp
 @@ -19,6 +19,8 @@
@@ -70,7 +70,13 @@ index 2b77a5f..76613a7 100644
      return mWindowManagerApi->GetMouseState(static_cast<uint32_t>(btn));
  }
  
-@@ -372,11 +375,13 @@ void Fast3dWindow::AllKeysUp() {
+@@ -367,16 +370,19 @@ bool Fast3dWindow::KeyDown(int32_t scancode) {
+ }
+ 
+ void Fast3dWindow::AllKeysUp() {
++    if(mouseButtonInterceptor)for(int button=0;button<3;button++)mouseButtonInterceptor(false,button);
+     Ship::Context::GetRawInstance()->GetControlDeck()->ProcessKeyboardEvent(Ship::KbEventType::LUS_KB_EVENT_ALL_KEYS_UP,
+                                                                             Ship::KbScancode::LUS_KB_UNKNOWN);
  }
  
  bool Fast3dWindow::MouseButtonUp(int button) {
@@ -85,7 +91,7 @@ index 2b77a5f..76613a7 100644
          true, static_cast<Ship::MouseBtn>(button));
      return isProcessed;
 diff --git a/src/fast/interpreter.cpp b/src/fast/interpreter.cpp
-index 2b51ad7..9c88645 100644
+index 2b51ad7..b82747d 100644
 --- a/src/fast/interpreter.cpp
 +++ b/src/fast/interpreter.cpp
 @@ -1597,6 +1597,14 @@ void Interpreter::GfxSpVertex(size_t n_vertices, size_t dest_index, const F3DVtx
@@ -103,7 +109,7 @@ index 2b51ad7..9c88645 100644
          if (mRsp->geometry_mode & G_LIGHTING_POSITIONAL) {
              float(*mtx)[4] = mRsp->modelview_matrix_stack[mRsp->modelview_matrix_stack_size - 1];
              world_pos[0] = v->ob[0] * mtx[0][0] + v->ob[1] * mtx[1][0] + v->ob[2] * mtx[2][0] + mtx[3][0];
-@@ -1777,6 +1785,19 @@ void Interpreter::GfxSpModifyVertex(uint16_t vtx_idx, uint8_t where, uint32_t va
+@@ -1777,11 +1785,23 @@ void Interpreter::GfxSpModifyVertex(uint16_t vtx_idx, uint8_t where, uint32_t va
  }
  
  void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bool is_rect) {
@@ -123,3 +129,8 @@ index 2b51ad7..9c88645 100644
      struct LoadedVertex* v1 = &mRsp->loaded_vertices[vtx1_idx];
      struct LoadedVertex* v2 = &mRsp->loaded_vertices[vtx2_idx];
      struct LoadedVertex* v3 = &mRsp->loaded_vertices[vtx3_idx];
+     struct LoadedVertex* v_arr[3] = { v1, v2, v3 };
+-
+     // if (rand()%2) return;
+ 
+     if (v1->clip_rej & v2->clip_rej & v3->clip_rej) {

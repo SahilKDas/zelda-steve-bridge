@@ -97,7 +97,7 @@ index bc2a3d14..c49c68af 100644
              fprintf(stderr, "failed to extract %s\n", rom.c_str());
              return 1;
 diff --git a/soh/soh/OTRGlobals.cpp b/soh/soh/OTRGlobals.cpp
-index d336c3c5..791d8216 100644
+index d336c3c5..7ff794ef 100644
 --- a/soh/soh/OTRGlobals.cpp
 +++ b/soh/soh/OTRGlobals.cpp
 @@ -451,7 +451,9 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
@@ -126,6 +126,22 @@ index d336c3c5..791d8216 100644
  
      switch (dwScancode) {
          case KbScancode::LUS_KB_F1: {
+@@ -1762,6 +1766,7 @@ extern "C" void Graph_StartFrame() {
+ }
+ 
+ // Interpolated frames of a tick are evenly spaced numerators time+step, time+2*step, ... over denom.
++extern "C" void SteveUi_CaptureFrame(void);
+ void RunCommands(Gfx* Commands, int time, int step, int denom, int count) {
+     auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(OTRGlobals::Instance->context->GetWindow());
+ 
+@@ -1789,6 +1794,7 @@ void RunCommands(Gfx* Commands, int time, int step, int denom, int count) {
+         FrameInterpolation_UpdateSkinnedVertices(interpolationStep);
+         intp->mInterpolationT = interpolationStep;
+         wnd->DrawAndRunGraphicsCommands(Commands, mtx_replacements);
++        SteveUi_CaptureFrame();
+         intp->mInterpolationIndex++;
+     }
+     ImGui::PopStyleColor();
 diff --git a/soh/src/code/z_bgcheck.c b/soh/src/code/z_bgcheck.c
 index d3c18357..85a070ff 100644
 --- a/soh/src/code/z_bgcheck.c
@@ -200,11 +216,34 @@ index be81fcca..e069e35e 100644
      if (!(collider->acFlags & AC_HARD)) {
          collider->actor->colChkInfo.damage += damage;
      }
+diff --git a/soh/src/code/z_map_exp.c b/soh/src/code/z_map_exp.c
+index 88c2343c..ad8bfbc3 100644
+--- a/soh/src/code/z_map_exp.c
++++ b/soh/src/code/z_map_exp.c
+@@ -1,3 +1,4 @@
++int SteveActor_FirstPerson(void);
+ #include "global.h"
+ #include "vt.h"
+ #include "objects/gameplay_keep/gameplay_keep.h"
+@@ -778,6 +779,7 @@ void Minimap_DrawCompassIcons(PlayState* play) {
+ }
+ 
+ void Minimap_Draw(PlayState* play) {
++    if(SteveActor_FirstPerson() && !CVarGetInteger("gEnhancements.SteveFirstPersonMinimap",0))return;
+     s32 pad[2];
+     InterfaceContext* interfaceCtx = &play->interfaceCtx;
+     s32 mapIndex = gSaveContext.mapIndex;
 diff --git a/soh/src/code/z_play.c b/soh/src/code/z_play.c
-index 729edd0e..f5f19671 100644
+index 729edd0e..f6e91015 100644
 --- a/soh/src/code/z_play.c
 +++ b/soh/src/code/z_play.c
-@@ -194,10 +194,12 @@ Gfx* Play_SetFog(PlayState* play, Gfx* gfx) {
+@@ -1,4 +1,5 @@
+ #include "global.h"
++void SteveCamera_Update(PlayState* play);
+ #include "vt.h"
+ 
+ #include <string.h>
+@@ -194,10 +195,12 @@ Gfx* Play_SetFog(PlayState* play, Gfx* gfx) {
                         play->lightCtx.fogNear, 1000);
  }
  
@@ -217,6 +256,39 @@ index 729edd0e..f5f19671 100644
      GameInteractor_ExecuteOnPlayDestroy();
  
      play->state.gfxCtx->callback = NULL;
+@@ -1275,6 +1278,7 @@ skip:
+         }
+ 
+         Camera_Update(play->cameraPtrs[play->nextCamera]);
++        SteveCamera_Update(play);
+ 
+         PLAY_LOG(3814);
+     }
+@@ -1620,6 +1624,7 @@ Play_Draw_skip:
+ 
+     if (play->view.unk_124 != 0) {
+         Camera_Update(GET_ACTIVE_CAM(play));
++        SteveCamera_Update(play);
+         func_800AB944(&play->view);
+         play->view.unk_124 = 0;
+         if (play->skyboxId && (play->skyboxId != SKYBOX_UNSET_1D) && !play->envCtx.skyboxDisabled) {
+diff --git a/soh/src/overlays/actors/ovl_En_Elf/z_en_elf.c b/soh/src/overlays/actors/ovl_En_Elf/z_en_elf.c
+index 0465df2f..ba179c42 100644
+--- a/soh/src/overlays/actors/ovl_En_Elf/z_en_elf.c
++++ b/soh/src/overlays/actors/ovl_En_Elf/z_en_elf.c
+@@ -1,3 +1,4 @@
++int SteveActor_FirstPerson(void);
+ /*
+  * File: z_en_elf.c
+  * Overlay: ovl_En_Elf
+@@ -1504,6 +1505,7 @@ void EnElf_Draw(Actor* thisx, PlayState* play) {
+     Gfx* dListHead;
+     Player* player = GET_PLAYER(play);
+ 
++    if(SteveActor_FirstPerson() && thisx->projectedPos.z<60.f)return;
+     if ((this->unk_2A8 != 8) && !(this->fairyFlags & 8)) {
+         if (!(player->stateFlags1 & PLAYER_STATE1_FIRST_PERSON) || (kREG(90) < this->actor.projectedPos.z)) {
+             dListHead = Graph_Alloc(play->state.gfxCtx, sizeof(Gfx) * 4);
 diff --git a/soh/src/overlays/actors/ovl_En_Horse/z_en_horse.c b/soh/src/overlays/actors/ovl_En_Horse/z_en_horse.c
 index 0659cac2..2a2dd0a6 100644
 --- a/soh/src/overlays/actors/ovl_En_Horse/z_en_horse.c
@@ -246,23 +318,24 @@ index 0659cac2..2a2dd0a6 100644
 + } else EnHorse_DrawOriginal(actor,play);
 +}
 diff --git a/soh/src/overlays/actors/ovl_player_actor/z_player.c b/soh/src/overlays/actors/ovl_player_actor/z_player.c
-index 09dfb520..37bd7173 100644
+index 09dfb520..9162a46d 100644
 --- a/soh/src/overlays/actors/ovl_player_actor/z_player.c
 +++ b/soh/src/overlays/actors/ovl_player_actor/z_player.c
-@@ -6,6 +6,12 @@
+@@ -6,6 +6,13 @@
  
  #include <libultraship/libultra.h>
  #include "global.h"
 +void SteveActor_Update(Actor* actor, PlayState* play);
 +int SteveActor_Draw(Actor* actor, PlayState* play);
 +int SteveActor_IsReady(void);
++int SteveActor_FirstPerson(void);
 +void Player_Draw(Actor* thisx, PlayState* play);
 +void Player_Update(Actor* thisx, PlayState* play);
 +void SteveActor_PostUpdate(Actor* actor, PlayState* play);
  
  #include "overlays/actors/ovl_Bg_Heavy_Block/z_bg_heavy_block.h"
  #include "overlays/actors/ovl_Door_Shutter/z_door_shutter.h"
-@@ -4917,6 +4923,12 @@ void func_808389E8(Player* this, LinkAnimationHeader* anim, f32 arg2, PlayState*
+@@ -4917,6 +4924,12 @@ void func_808389E8(Player* this, LinkAnimationHeader* anim, f32 arg2, PlayState*
      func_80838940(this, anim, arg2, play, NA_SE_VO_LI_SWORD_N);
  }
  
@@ -275,7 +348,7 @@ index 09dfb520..37bd7173 100644
  s32 Player_ActionHandler_12(Player* this, PlayState* play) {
      s32 sp3C;
      LinkAnimationHeader* anim;
-@@ -12191,7 +12203,7 @@ static Vec3f sDogSpawnOffset = { 0.0f, 0.0f, -30.0f };
+@@ -12191,7 +12204,7 @@ static Vec3f sDogSpawnOffset = { 0.0f, 0.0f, -30.0f };
  
  s32 Player_UpdateNoclip(Player* this, PlayState* play);
  
@@ -284,7 +357,7 @@ index 09dfb520..37bd7173 100644
      static Vec3f sDogSpawnPos;
      Player* this = (Player*)thisx;
      s32 dogParams;
-@@ -12429,7 +12441,7 @@ void Player_DrawGameplay(PlayState* play, Player* this, s32 lod, Gfx* cullDList,
+@@ -12429,7 +12442,7 @@ void Player_DrawGameplay(PlayState* play, Player* this, s32 lod, Gfx* cullDList,
      CLOSE_DISPS(play->state.gfxCtx);
  }
  
@@ -293,7 +366,7 @@ index 09dfb520..37bd7173 100644
      PlayState* play = play2;
      Player* this = (Player*)thisx;
  
-@@ -16612,3 +16624,22 @@ void Player_StartTalking(PlayState* play, Actor* actor) {
+@@ -16612,3 +16625,23 @@ void Player_StartTalking(PlayState* play, Actor* actor) {
      F(sHeldItemButtonIsHeldDown)
  
  SHIP_SAVESTATE_DEFINE(Player, PLAYER_SHIP_SAVESTATE_FIELDS)
@@ -312,6 +385,7 @@ index 09dfb520..37bd7173 100644
 +        play->state.gfxCtx->polyOpa.p = opa;
 +        play->state.gfxCtx->polyXlu.p = xlu;
 +        SteveActor_Draw(thisx, play);
++        if(SteveActor_FirstPerson())thisx->shape.shadowDraw=NULL;
 +    } else {
 +        Player_DrawLink(thisx, play);
 +    }

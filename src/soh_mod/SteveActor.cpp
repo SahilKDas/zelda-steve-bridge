@@ -7,13 +7,21 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <algorithm>
+#include <iterator>
 #include "soh_mod/generated/minecraft_textures.inc"
+static bool sFirstPersonPass;
+static Gfx*& SteveDisplayList(GraphicsContext* context){return sFirstPersonPass?context->overlay.p:context->polyOpa.p;}
+#undef POLY_OPA_DISP
+#define POLY_OPA_DISP SteveDisplayList(__gfxCtx)
 extern "C" {
 
 static StevePose sPose;
 static int sConnected;
 static uint32_t sSlot;
-static int sJumpRequested,sUseRequested;
+static int sJumpRequested,sUseRequested,sMouseMining,sMouseUsing,sMineRequested;
+void SteveActor_SetMining(int down){sMouseMining=down;if(down)sMineRequested=1;}
+void SteveActor_SetUsing(int down){sMouseUsing=down;}
 void SteveActor_RequestUse(void) {sUseRequested=1;}
 void SteveActor_RequestJump(void) {sJumpRequested=1;}
 void StevePlayer_Jump(Player* player,PlayState* play);
@@ -29,6 +37,8 @@ int SteveTerrain_ClippedTriangles(void);
 int SteveUi_TestDraws(void);
 int SteveUi_TextureCount(void);
 int SteveUi_TestMouseClick(int button);
+int SteveUi_TestMouseHeld(int button,int pressed);
+int SteveUi_TestAimDraws(void);
 int SteveActor_IsReady(void) { return sConnected && CVarGetInteger("gEnhancements.SteveBridge",1) && SteveBridge_GetPose(&sPose); }
 static PlayState* sPlay;
 int SteveActor_HudAllowed(void) {
@@ -36,6 +46,37 @@ int SteveActor_HudAllowed(void) {
         sPlay->pauseCtx.state==0 && !(GET_PLAYER(sPlay)->stateFlags1&PLAYER_STATE1_IN_CUTSCENE);
 }
 static Vec3f sOrigin;
+static float sLookYaw,sLookPitch;
+static ActorShadowFunc sShadowBeforeFirstPerson;
+static bool sShadowMasked;
+static int sLookReady,sAimValid,sFirstPersonDraws;
+static uint32_t sHandItemKind;
+static float sEquipProgress=1;
+static Vec3f sAimMine,sAimPlace;
+int SteveActor_FirstPerson(void){return SteveActor_HudAllowed() && CVarGetInteger("gEnhancements.SteveFirstPerson",1);}
+void SteveActor_Look(float dx,float dy){if(!sLookReady)return;sLookYaw-=dx*0.0025f;sLookPitch-=dy*0.0025f;sLookPitch=fmaxf(-1.569f,fminf(1.569f,sLookPitch));}
+int SteveActor_GetAim(int placing,float* x,float* y,float* z){if(!sAimValid)return 0;Vec3f p=placing?sAimPlace:sAimMine;*x=p.x;*y=p.y;*z=p.z;return 1;}
+int SteveActor_Project(float x,float y,float z,float aspect,float* u,float* v){
+    if(!sPlay)return 0;
+    Camera* camera=GET_ACTIVE_CAM(sPlay);Vec3f f={camera->at.x-camera->eye.x,camera->at.y-camera->eye.y,camera->at.z-camera->eye.z};
+    float length=sqrtf(f.x*f.x+f.y*f.y+f.z*f.z);if(length<0.001f)return 0;f.x/=length;f.y/=length;f.z/=length;
+    float horizontal=sqrtf(f.x*f.x+f.z*f.z);if(horizontal<0.001f)return 0;
+    Vec3f right={-f.z/horizontal,0,f.x/horizontal},up={-f.y*f.x/horizontal,horizontal,-f.y*f.z/horizontal};
+    Vec3f d={x-camera->eye.x,y-camera->eye.y,z-camera->eye.z};float depth=d.x*f.x+d.y*f.y+d.z*f.z;if(depth<1.f)return 0;
+    float tangent=tanf(camera->fov*0.008726646f);
+    *u=0.5f+(d.x*right.x+d.z*right.z)/(2*depth*tangent*aspect);
+    *v=0.5f-(d.x*up.x+d.y*up.y+d.z*up.z)/(2*depth*tangent);return 1;
+}
+void SteveCamera_Update(PlayState* play){
+    if(!SteveActor_FirstPerson() || !sLookReady)return;
+    Player* player=GET_PLAYER(play);Camera* camera=GET_ACTIVE_CAM(play);
+    camera->eye=player->actor.world.pos;camera->eye.y+=sPose.flying?8.f:32.4f;
+    camera->at={camera->eye.x+sinf(sLookYaw)*cosf(sLookPitch)*100,camera->eye.y+sinf(sLookPitch)*100,camera->eye.z+cosf(sLookYaw)*cosf(sLookPitch)*100};
+    camera->eyeNext=camera->eye;camera->up={0,1,0};camera->fov=70;
+    camera->inputDir.y=camera->camDir.y=(s16)(sLookYaw*32768/3.14159265f);camera->inputDir.x=camera->camDir.x=(s16)(sLookPitch*32768/3.14159265f);
+    play->view.fovy=70;func_800AA358(&play->view,&camera->eye,&camera->at,&camera->up);
+}
+
 static uint64_t sLastTick, sBlockEvent;
 static int sLastHealth, sBlockAlive;
 static DynaPolyActor sBlock;
@@ -67,7 +108,7 @@ int SteveActor_IsAttackInfo(const ColliderInfo* info) {
 }
 static int sTestMode=-1, sTestFrame, sRenderedFrames;
 static float sJumpTestPeak,sMouseFlightBefore;
-static int sJumpTestPlaced,sJumpTestLanded,sMouseGlide,sMouseBoost,sMouseReserved;
+static int sJumpTestPlaced,sJumpTestLanded,sMouseGlide,sMouseBoost,sMouseReserved,sMouseMined;
 static uint32_t sTestPick, sTestFood, sTestBow, sTestArrows;
 static int sTestShield, sTestDamage, sTestCollision;
 static int sTestBasePassed,sTestTntPlaced,sTestTntPrimed,sTestTntExplosion,sTestSwap,sTestGlide;
@@ -86,6 +127,7 @@ static void SteveActor_TestInput(SteveInput* packet) {
     if (sTestFrame==175) sTestShield=sPose.hand==3;
     if (sTestFrame==210) sTestDamage=sPose.health<20;
     if (sTestFrame==1) {
+        CVarSetInteger("gEnhancements.SteveFirstPerson",0);
         packet->flags|=1;
         sTestPick=sPose.hotbar[1].durability; sTestFood=sPose.hotbar[2].count;
         sTestBow=sPose.hotbar[3].durability; sTestArrows=sPose.hotbar[8].count;
@@ -136,10 +178,11 @@ static void SteveActor_TestInput(SteveInput* packet) {
         sTestFlightStart=GET_PLAYER(sPlay)->actor.world.pos;
         GET_PLAYER(sPlay)->actor.bgCheckFlags&=~BGCHECKFLAG_GROUND;
         packet->y=GET_PLAYER(sPlay)->actor.world.pos.y/20;packet->flags&=~2u;
-        SteveUi_TestMouseClick(2);
+        SteveActor_RequestJump();
     }
     if(sTestFrame==810) sTestGlide=sPose.flying &&
         (fabsf(GET_PLAYER(sPlay)->actor.world.pos.x-sTestFlightStart.x)+fabsf(GET_PLAYER(sPlay)->actor.world.pos.z-sTestFlightStart.z)>5);
+    if(sTestFrame==850)CVarSetInteger("gEnhancements.SteveFirstPerson",1);
     if(sTestFrame>=890) {
         GET_PLAYER(sPlay)->actor.world.pos=sOrigin;GET_PLAYER(sPlay)->actor.bgCheckFlags|=BGCHECKFLAG_GROUND;
         GET_PLAYER(sPlay)->invincibilityTimer=30;
@@ -180,10 +223,10 @@ static void SteveActor_TestInput(SteveInput* packet) {
     if(sTestFrame==1200) {
         FILE* log=fopen("steve-in-game-test.log","w");
         int passed=sTestBasePassed && sTestTntPlaced && sTestTntPrimed && sTestTntExplosion>=2 &&
-            sNativeAxeHits>=2 && sTestEnemyDamaged && sTestSwap && SteveUi_TestDraws()>3 && SteveUi_TextureCount()==14 && sTestGlide && sArmorGlintDraws>0 && sTestTerrainCut && sTestObsidianPlaced && sTestObsidianRecovered;
-        if(log) {fprintf(log,"%s native SoH: rendered=%d mining=%llu TNT_place=%d TNT_prime=%d TNT_explode=%d axe_collisions=%d inventory_swap=%d inventory_draws=%d textures=%d elytra=%d fuse=%d charge_fuse=%d enemy_damaged=%d terrain=%d clipped=%d obsidian=%d/%d\n",
+            sNativeAxeHits>=2 && sTestEnemyDamaged && sTestSwap && SteveUi_TestDraws()>3 && SteveUi_TextureCount()==14 && sTestGlide && sArmorGlintDraws>0 && sTestTerrainCut && sTestObsidianPlaced && sTestObsidianRecovered && sFirstPersonDraws>20;
+        if(log) {fprintf(log,"%s native SoH: rendered=%d mining=%llu TNT_place=%d TNT_prime=%d TNT_explode=%d axe_collisions=%d inventory_swap=%d inventory_draws=%d textures=%d elytra=%d fuse=%d charge_fuse=%d enemy_damaged=%d terrain=%d clipped=%d obsidian=%d/%d first_person=%d\n",
             passed?"PASS":"FAIL",sRenderedFrames,(unsigned long long)sPose.block_event,sTestTntPlaced,sTestTntPrimed,sTestTntExplosion,
-            sNativeAxeHits,sTestSwap,SteveUi_TestDraws(),SteveUi_TextureCount(),sTestGlide,sPose.tnt_fuse,sPose.charges[0].fuse,sTestEnemyDamaged,sTestTerrainCut,SteveTerrain_ClippedTriangles(),sTestObsidianPlaced,sTestObsidianRecovered);fclose(log);}
+            sNativeAxeHits,sTestSwap,SteveUi_TestDraws(),SteveUi_TextureCount(),sTestGlide,sPose.tnt_fuse,sPose.charges[0].fuse,sTestEnemyDamaged,sTestTerrainCut,SteveTerrain_ClippedTriangles(),sTestObsidianPlaced,sTestObsidianRecovered,sFirstPersonDraws);fclose(log);}
         if(getenv("STEVE_IN_GAME_TEST_EXIT")) SteveActor_RequestExit();
     }
 }
@@ -207,8 +250,8 @@ void SteveActor_Reset(PlayState* play) {
     if(sPlay==play) {int i;for(i=0;i<8;i++)if(sTntCollision[i] && sTnt[i].bgId<BG_ACTOR_MAX)DynaPoly_DeleteBgActor(play,&play->colCtx.dyna,sTnt[i].bgId);}
     memset(sTntCollision,0,sizeof(sTntCollision));memset(sChargeToken,0,sizeof(sChargeToken));
     if(sAxeInitialized) {Collider_DestroyQuad(play,&sAxe);sAxeInitialized=0;}
-    sTntAlive=0;sTntEvent=0;sAttackEvent=0;sWasFlying=0;
-    sPlay = NULL; sBlockAlive = 0; sConnected = 0; sLastTick = 0;
+    sTntAlive=0;sTntEvent=0;sAttackEvent=0;sWasFlying=0;sMouseMining=0;sMouseUsing=0;
+    sShadowMasked=false;sLookReady=0;sAimValid=0;sPlay = NULL; sBlockAlive = 0; sConnected = 0; sLastTick = 0;
     SteveBridge_Disconnect();
 }
 static void SteveBlock_Create(PlayState* play) {
@@ -236,11 +279,13 @@ static void SteveBlock_Create(PlayState* play) {
 }
 
 void SteveActor_Update(Actor* actor, PlayState* play) {
+    if(sShadowMasked){actor->shape.shadowDraw=sShadowBeforeFirstPerson;sShadowMasked=false;}
     Player* player = (Player*)actor;
     Input* input = &play->state.input[0];
     SteveInput packet = {0};
     if (!CVarGetInteger("gEnhancements.SteveBridge", 1)) { if (sPlay) SteveActor_Reset(sPlay); return; }
     if (sPlay != play) {
+        sLookYaw=actor->shape.rot.y*(3.14159265f/32768);sLookPitch=0;sLookReady=1;
         sPlay=play; sOrigin=actor->world.pos; sLastHealth=gSaveContext.health;
         sLastTick=0; sBlockEvent=0; sBlockAlive=0;
         sSceneSerial++;
@@ -257,16 +302,22 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
     if(getenv("STEVE_JUMP_TEST")) {
         sTestMode=2;
         if(sConnected) {
-            sTestFrame++;sSlot=sTestFrame>=205?7u:4u;
+            sTestFrame++;sSlot=sTestFrame>=270?1u:(sTestFrame>=205?7u:4u);
             if(sTestFrame==20){actor->world.pos.x=5;actor->world.pos.z=5;sOrigin=actor->world.pos;}
             if(sTestFrame==40)sMouseReserved=SteveUi_TestMouseClick(1);
+            if(sTestFrame>=265 && sTestFrame<=270)actor->bgCheckFlags|=BGCHECKFLAG_GROUND;
+            if(sTestFrame>=270 && sTestFrame<=275){sLookPitch=-1.4f;actor->world.pos={5,20,5};actor->prevPos=actor->world.pos;actor->velocity={0,0,0};actor->floorHeight=20;actor->bgCheckFlags|=BGCHECKFLAG_GROUND;}
+            if(sTestFrame>=270 && sTestFrame<=320){actor->world.pos.x=5;actor->world.pos.z=5;actor->prevPos.x=5;actor->prevPos.z=5;actor->velocity.x=0;actor->velocity.z=0;actor->speedXZ=0;player->invincibilityTimer=30;}
+            if(sTestFrame==275)SteveUi_TestMouseHeld(0,1);
+            if(sTestFrame==320)SteveUi_TestMouseHeld(0,0);
+            if(sTestFrame==340)sMouseMined=std::none_of(std::begin(sPose.cells),std::end(sPose.cells),[](const SteveCell& cell){return cell.active && cell.kind==5;});
             if(sTestFrame==185)SteveBridge_RequestCommand(2,6,0);
             if(sTestFrame==200){actor->world.pos.y+=500;actor->bgCheckFlags&=~BGCHECKFLAG_GROUND;}
-            if(sTestFrame==201)sMouseReserved&=SteveUi_TestMouseClick(2);
+            if(sTestFrame==201)SteveActor_RequestJump();
             if(sTestFrame==210){sMouseGlide=sPose.flying;sMouseFlightBefore=sqrtf(sPose.flight_x*sPose.flight_x+sPose.flight_y*sPose.flight_y+sPose.flight_z*sPose.flight_z);}
             if(sTestFrame==215)sMouseReserved&=SteveUi_TestMouseClick(2);
             if(sTestFrame>=220 && sTestFrame<245 && sqrtf(sPose.flight_x*sPose.flight_x+sPose.flight_y*sPose.flight_y+sPose.flight_z*sPose.flight_z)>sMouseFlightBefore+0.1f)sMouseBoost=1;
-            if(sTestFrame==185 || sTestFrame==200 || sTestFrame==201 || sTestFrame==210 || sTestFrame==215 || sTestFrame==225) {
+            if(sTestFrame==185 || sTestFrame==200 || sTestFrame==201 || sTestFrame==210 || sTestFrame==215 || sTestFrame==225 || sTestFrame==275 || sTestFrame==290 || sTestFrame==310) {
                 FILE* trace=fopen("steve-mouse-trace.log","a");
                 if(trace){fprintf(trace,"frame=%d y=%.2f grounded=%u hud=%d chest=%u equip=%u fly=%u kind=%u ack=%llu result=%u use=%d\n",
                     sTestFrame,actor->world.pos.y,(unsigned)(actor->bgCheckFlags&BGCHECKFLAG_GROUND),SteveActor_HudAllowed(),sPose.chest.id,
@@ -277,6 +328,8 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
     }
     const int jumpRequested=sJumpRequested;
     sJumpRequested=0;
+    if(jumpRequested && sConnected && SteveActor_HudAllowed() && !SteveUi_IsOpen() &&
+       !(actor->bgCheckFlags&BGCHECKFLAG_GROUND) && !sPose.flying)SteveBridge_RequestCommand(4,0,0);
     if(jumpRequested && sConnected && SteveActor_HudAllowed() && !SteveUi_IsOpen() &&
        !sPose.flying && (actor->bgCheckFlags&BGCHECKFLAG_GROUND) &&
        !(player->stateFlags1&(PLAYER_STATE1_INPUT_DISABLED|PLAYER_STATE1_ON_HORSE))) {
@@ -289,6 +342,8 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
     packet.z = actor->world.pos.z / 20.0f;
     packet.yaw = actor->shape.rot.y * (3.14159265f / 32768.0f);
     packet.pitch = actor->focus.rot.x * (3.14159265f / 32768.0f);
+    if(SteveActor_FirstPerson()){packet.yaw=sLookYaw;packet.pitch=-sLookPitch;}
+    sAimValid=0;
     packet.slot = sSlot;
     packet.scene=(sSceneSerial<<16) | ((uint32_t)play->sceneNum & 65535u);
     packet.health_capacity=(uint32_t)gSaveContext.healthCapacity;
@@ -309,6 +364,8 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
     }
     if(sUseRequested && sConnected && SteveActor_HudAllowed() && !SteveUi_IsOpen())packet.buttons|=1;
     sUseRequested=0;
+    if(sMineRequested && SteveActor_HudAllowed() && !SteveUi_IsOpen())packet.buttons|=2;sMineRequested=0;
+    if(SteveActor_HudAllowed() && !SteveUi_IsOpen()){if(sMouseMining)packet.buttons|=2;if(sMouseUsing)packet.buttons|=1;}
     packet.locked = player->focusActor != NULL;
     if (player->focusActor != NULL) {
         packet.tx = player->focusActor->world.pos.x / 20.0f;
@@ -324,6 +381,7 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
         for(;enemy;enemy=enemy->next) {
             float dx=enemy->world.pos.x-actor->world.pos.x,dz=enemy->world.pos.z-actor->world.pos.z;
             float distance=dx*dx+dz*dz;
+            if(SteveActor_FirstPerson() && distance>1 && (dx*sinf(sLookYaw)+dz*cosf(sLookYaw))<sqrtf(distance)*0.8f)continue;
             if(enemy->update && enemy->colChkInfo.health && distance<best) {nearest=enemy;best=distance;}
         }
         if(nearest) {
@@ -342,16 +400,19 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
         Camera* camera=GET_ACTIVE_CAM(play);
         Vec3f from=actor->world.pos,to,hit;
         CollisionPoly* poly=NULL; s32 bgId;
-        from.y+=22;
+        from.y+=SteveActor_FirstPerson()?(sPose.flying?8.f:32.4f):22.f;
         float dx=camera->at.x-camera->eye.x,dy=camera->at.y-camera->eye.y,dz=camera->at.z-camera->eye.z;
         float length=sqrtf(dx*dx+dy*dy+dz*dz);
         if(length>0.001f){dx/=length;dy/=length;dz/=length;}else{dx=sinf(packet.yaw);dy=-0.5f;dz=cosf(packet.yaw);}
         // A level third-person camera still aims at the ground ahead of the feet.
-        if(dy>-0.25f)dy=-0.35f;
+        if(SteveActor_FirstPerson()){dx=sinf(sLookYaw)*cosf(sLookPitch);dy=sinf(sLookPitch);dz=cosf(sLookYaw)*cosf(sLookPitch);}
+        else if(dy>-0.25f)dy=-0.35f;
         to.x=from.x+dx*100;to.y=from.y+dy*100;to.z=from.z+dz*100;
         if(BgCheck_EntityLineTest1(&play->colCtx,&from,&to,&hit,&poly,true,true,true,true,&bgId)) {
             float nx=COLPOLY_GET_NORMAL(poly->normal.x),ny=COLPOLY_GET_NORMAL(poly->normal.y),nz=COLPOLY_GET_NORMAL(poly->normal.z);
-            int placing=(input->cur.button&BTN_A) && (sPose.item_kind==5 || sPose.item_kind==13 || sPose.item_kind==7);
+            int placing=(packet.buttons&1) && (sPose.item_kind==5 || sPose.item_kind==13 || sPose.item_kind==7);
+            sAimMine={floorf((hit.x-nx)/20)*20+10,floorf((hit.y-ny)/20)*20+10,floorf((hit.z-nz)/20)*20+10};
+            sAimPlace={floorf((hit.x+nx)/20)*20+10,floorf((hit.y+ny)/20)*20+10,floorf((hit.z+nz)/20)*20+10};sAimValid=1;
             float offset=placing?1.f:-1.f;
             packet.tx=floorf((hit.x+nx*offset)/20)+0.5f;
             packet.ty=floorf((hit.y+ny*offset)/20)+0.5f;
@@ -359,7 +420,7 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
             packet.locked=1;packet.flags|=placing?8u:4u;
             for(int i=0;i<128;i++)if(sCellCollision[i] && sCells[i].bgId==bgId) {
                 const SteveCell* cell=&sPose.cells[i];
-                if(!placing){packet.tx=cell->x;packet.ty=cell->y-((cell->flags&1)?1.f:0.f);packet.tz=cell->z;}
+                if(!placing){packet.tx=cell->x;packet.ty=cell->y-((cell->flags&1)?1.f:0.f);packet.tz=cell->z;sAimMine={packet.tx*20,packet.ty*20,packet.tz*20};}
                 break;
             }
         }
@@ -367,7 +428,7 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
     // While airborne, place on the supporting surface directly beneath Steve.
     // Require space above its top so placement cannot intersect his feet.
     if(sTestMode!=1 && !(actor->bgCheckFlags&BGCHECKFLAG_GROUND) &&
-       (packet.buttons&1) && !packet.target_enemy &&
+       !packet.target_enemy &&
        (sPose.item_kind==5 || sPose.item_kind==13 || sPose.item_kind==7)) {
         Vec3f from=actor->world.pos,to=from,hit;
         CollisionPoly* poly=NULL; s32 bgId;
@@ -375,12 +436,14 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
         if(BgCheck_EntityLineTest1(&play->colCtx,&from,&to,&hit,&poly,false,true,false,true,&bgId)) {
             float centerY=floorf((hit.y+1.f)/20.f)*20.f+10.f;
             if(actor->world.pos.y>=centerY+12.f) {
-                packet.tx=floorf(actor->world.pos.x/20.f)+0.5f;
-                packet.ty=centerY/20.f;
-                packet.tz=floorf(actor->world.pos.z/20.f)+0.5f;
-                packet.locked=1;packet.flags=(packet.flags&~4u)|8u;
+                sAimPlace={floorf(actor->world.pos.x/20.f)*20+10,centerY,floorf(actor->world.pos.z/20.f)*20+10};sAimValid=1;
+                if(packet.buttons&1){packet.tx=sAimPlace.x/20;packet.ty=sAimPlace.y/20;packet.tz=sAimPlace.z/20;packet.locked=1;packet.flags=(packet.flags&~4u)|8u;}
             }
         }
+    }
+    if(sTestMode==0 && !sAimValid && !packet.target_enemy){if(sPose.item_kind==1)packet.buttons&=~2u;if(sPose.item_kind==5 || sPose.item_kind==13)packet.buttons&=~1u;}
+    if(sTestMode==2 && (sTestFrame==275 || sTestFrame==290 || sTestFrame==310)){
+        FILE* trace=fopen("steve-mouse-trace.log","a");if(trace){fprintf(trace,"aim frame=%d pos=%.2f/%.2f/%.2f target=%.2f/%.2f/%.2f buttons=%u flags=%u mouse=%d stage=%d\n",sTestFrame,packet.x,packet.y,packet.z,packet.tx,packet.ty,packet.tz,packet.buttons,packet.flags,sMouseMining,sPose.destruction_stage);fclose(trace);}
     }
     SteveActor_TestInput(&packet);
     sConnected = SteveBridge_Frame(&packet, &sPose);
@@ -486,6 +549,7 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
 }
 void SteveActor_PostUpdate(Actor* actor,PlayState* play) {
     if(sTestMode==2) {
+        if(sTestFrame>=270 && sTestFrame<=320){actor->world.pos.x=5;actor->world.pos.z=5;actor->velocity.x=0;actor->velocity.z=0;actor->speedXZ=0;GET_PLAYER(play)->invincibilityTimer=30;}
         const float rise=actor->world.pos.y-sOrigin.y;
         if(sTestFrame<=180 && rise>sJumpTestPeak)sJumpTestPeak=rise;
         if(sTestFrame==180) {
@@ -494,11 +558,11 @@ void SteveActor_PostUpdate(Actor* actor,PlayState* play) {
                 fabsf(sPose.cells[i].x-0.5f)<0.1f && fabsf(sPose.cells[i].z-0.5f)<0.1f)placed=1;
             sJumpTestPlaced=placed;sJumpTestLanded=rise>=19 && (actor->bgCheckFlags&BGCHECKFLAG_GROUND);
         }
-        if(sTestFrame==260) {
+        if(sTestFrame==350) {
             FILE* log=fopen("steve-jump-test.log","w");
-            if(log){fprintf(log,"%s native mouse controls: jump_peak=%.2f underfoot_block=%d landed=%d reserved=%d glide=%d fireworks_boost=%d\n",
-                sJumpTestPeak>22 && sJumpTestPlaced && sJumpTestLanded && sMouseReserved && sMouseGlide && sMouseBoost?"PASS":"FAIL",
-                sJumpTestPeak,sJumpTestPlaced,sJumpTestLanded,sMouseReserved,sMouseGlide,sMouseBoost);fclose(log);}
+            if(log){fprintf(log,"%s native mouse controls: jump_peak=%.2f underfoot_block=%d landed=%d reserved=%d glide=%d fireworks_boost=%d left_mine=%d first_person=%d aim=%d\n",
+                sJumpTestPeak>22 && sJumpTestPlaced && sJumpTestLanded && sMouseReserved && sMouseGlide && sMouseBoost && sMouseMined && sFirstPersonDraws>20 && SteveUi_TestAimDraws()?"PASS":"FAIL",
+                sJumpTestPeak,sJumpTestPlaced,sJumpTestLanded,sMouseReserved,sMouseGlide,sMouseBoost,sMouseMined,sFirstPersonDraws,SteveUi_TestAimDraws());fclose(log);}
             SteveActor_RequestExit();
         }
     }
@@ -510,14 +574,19 @@ void SteveActor_PostUpdate(Actor* actor,PlayState* play) {
         actor->velocity.y=0;actor->gravity=0;actor->speedXZ=0;
         Actor_UpdateBgCheckInfo(play,actor,20,15,40,5);
     } else if(sWasFlying) {actor->gravity=sGravityBeforeFlight;sWasFlying=0;}
+    if(SteveActor_FirstPerson()){actor->shape.rot.y=(s16)(sLookYaw*32768/3.14159265f);sShadowBeforeFirstPerson=actor->shape.shadowDraw;sShadowMasked=true;actor->shape.shadowDraw=NULL;}
 }
 
 static void SteveLoadTexture(PlayState* play,const SteveSkinFace* texture) {
     OPEN_DISPS(play->state.gfxCtx);
-    const int paddedWidth=(texture->width+3)&~3;
+    gDPSetCycleType(POLY_OPA_DISP++,G_CYC_1CYCLE);
+    gDPSetTextureLUT(POLY_OPA_DISP++,G_TT_NONE);
+    gDPSetTextureLOD(POLY_OPA_DISP++,G_TL_TILE);
+    gSPTexture(POLY_OPA_DISP++,0xFFFF,0xFFFF,0,G_TX_RENDERTILE,G_ON);
+    const int paddedWidth=std::max(8,(texture->width+3)&~3);
     gDPLoadTextureBlock(POLY_OPA_DISP++,(void*)texture->pixels,G_IM_FMT_RGBA,G_IM_SIZ_16b,
         paddedWidth,texture->height,0,G_TX_CLAMP,G_TX_CLAMP,G_TX_NOMASK,G_TX_NOMASK,G_TX_NOLOD,G_TX_NOLOD);
-    gDPSetTileSize(POLY_OPA_DISP++,G_TX_RENDERTILE,0,0,(texture->width-1)<<G_TEXTURE_IMAGE_FRAC,(texture->height-1)<<G_TEXTURE_IMAGE_FRAC);
+    gDPSetTileSize(POLY_OPA_DISP++,G_TX_RENDERTILE,0,0,(paddedWidth-1)<<G_TEXTURE_IMAGE_FRAC,(texture->height-1)<<G_TEXTURE_IMAGE_FRAC);
     CLOSE_DISPS(play->state.gfxCtx);
 }
 static void SteveSkinLimb(PlayState* play,int part,float x,float y,float z,float w,float h,float d) {
@@ -563,6 +632,9 @@ static void SteveSkinLimb(PlayState* play,int part,float x,float y,float z,float
         for(face=0;face<6;face++) {
             const SteveSkinFace* texture=layer<2?&sSkinFaces[part][layer][face]:pass?
                 &sArmorGlintFaces[armorPart][(play->gameplayFrames/3)%8][face]:&sArmorFaces[armorPart][face];
+            bool opaquePixel=false;const int stride=std::max(8,(texture->width+3)&~3);
+            for(int row=0;row<texture->height && !opaquePixel;row++)for(int col=0;col<texture->width;col++)if(texture->pixels[2*(row*stride+col)+1]&1){opaquePixel=true;break;}
+            if(!opaquePixel)continue;
             Vtx* vertices=(Vtx*)Graph_Alloc(play->state.gfxCtx,4*sizeof(Vtx));
             memset(vertices,0,4*sizeof(Vtx));
             for(i=0;i<4;i++) {
@@ -633,6 +705,12 @@ static void SteveCuboid(PlayState* play,const SteveSkinFace* faces,float x,float
     Matrix_Push();Matrix_RotateX(1.5707963f,MTXMODE_APPLY);SteveSprite(play,&faces[1],0,0,h,w,d);Matrix_Pop();
     Matrix_Pop();
 }
+static void SteveFirstPersonArm(PlayState* play,int part,float centerY){
+    Matrix_Push();Matrix_Translate(0,centerY,0,MTXMODE_APPLY);
+    SteveCuboid(play,sSkinFaces[part][0],0,0,0,2.25f,6.75f,2.25f);
+    SteveCuboid(play,sSkinFaces[part][1],0,0,0,2.5f,7.f,2.5f);
+    Matrix_Pop();
+}
 int SteveHorse_IsRidden(Actor* actor,PlayState* play) {
     Player* player=GET_PLAYER(play);
     return SteveActor_IsReady() && (player->stateFlags1&PLAYER_STATE1_ON_HORSE) && player->rideActor==actor;
@@ -670,6 +748,7 @@ int SteveActor_Draw(Actor* actor, PlayState* play) {
     gDPSetRenderMode(POLY_OPA_DISP++,G_RM_AA_ZB_TEX_EDGE,G_RM_AA_ZB_TEX_EDGE2);
     gSPClearGeometryMode(POLY_OPA_DISP++,G_LIGHTING | G_CULL_BACK | G_FOG | G_TEXTURE_GEN | G_TEXTURE_GEN_LINEAR);
     gDPSetCombineMode(POLY_OPA_DISP++,G_CC_PRIMITIVE,G_CC_PRIMITIVE);
+    if(!SteveActor_FirstPerson()) {
     Matrix_Push();
     Matrix_Translate(actor->world.pos.x,actor->world.pos.y,actor->world.pos.z,MTXMODE_NEW);
     Player* player=(Player*)actor;
@@ -724,6 +803,41 @@ int SteveActor_Draw(Actor* actor, PlayState* play) {
         SteveCuboid(play,sWingFaces[0],-5,-10,-1,5,10,1);Matrix_Pop();
     }
     Matrix_Pop();
+    } else {
+        sFirstPersonDraws++;sFirstPersonPass=true;
+        gSPMatrix(POLY_OPA_DISP++,play->view.projectionPtr,G_MTX_NOPUSH|G_MTX_LOAD|G_MTX_PROJECTION);
+        gSPMatrix(POLY_OPA_DISP++,play->view.viewingPtr,G_MTX_NOPUSH|G_MTX_MUL|G_MTX_PROJECTION);
+        gDPSetCycleType(POLY_OPA_DISP++,G_CYC_1CYCLE);
+        gSPClearGeometryMode(POLY_OPA_DISP++,G_LIGHTING|G_CULL_BOTH|G_FOG|G_TEXTURE_GEN|G_TEXTURE_GEN_LINEAR);
+        gSPClearGeometryMode(POLY_OPA_DISP++,G_ZBUFFER);
+        gDPSetRenderMode(POLY_OPA_DISP++,G_RM_AA_TEX_EDGE,G_RM_AA_TEX_EDGE2);
+        Camera* camera=GET_ACTIVE_CAM(play);
+        float bob=sinf(play->gameplayFrames*0.45f)*fminf(fabsf(actor->speedXZ)*0.16f,0.5f);
+        float swing=sinf(sPose.right_arm)*3.f;
+        if(sHandItemKind!=sPose.item_kind){sEquipProgress=fmaxf(0,sEquipProgress-0.25f);if(sEquipProgress==0)sHandItemKind=sPose.item_kind;}else sEquipProgress=fminf(1,sEquipProgress+0.2f);
+        Matrix_Push();Matrix_Translate(camera->eye.x,camera->eye.y,camera->eye.z,MTXMODE_NEW);
+        Matrix_RotateY(sLookYaw,MTXMODE_APPLY);Matrix_RotateX(-sLookPitch,MTXMODE_APPLY);
+        Matrix_Push();Matrix_Translate(-9+swing,-12+bob-(1-sEquipProgress)*10,22-fabsf(swing),MTXMODE_APPLY);
+        Matrix_RotateZ(-0.55f,MTXMODE_APPLY);Matrix_RotateX(-0.65f+sPose.right_arm*0.55f,MTXMODE_APPLY);
+        SteveFirstPersonArm(play,2,-3);
+        Matrix_Translate(0,2,3,MTXMODE_APPLY);
+        if(sHandItemKind==5 || sHandItemKind==13 || sHandItemKind==7){
+            SteveSkinFace faces[6];for(auto& face:faces)face=sItemFaces[sHandItemKind];
+            if(sHandItemKind==7){faces[0]=sTntTop;faces[1]=sTntBottom;}
+            Matrix_RotateY(0.6f,MTXMODE_APPLY);SteveCuboid(play,faces,0,0,0,3,3,3);
+        } else if(sHandItemKind>0 && sHandItemKind<16) {
+            Matrix_RotateZ(0.55f,MTXMODE_APPLY);SteveSprite(play,&sItemFaces[sHandItemKind],0,2,0,6,6);
+        }
+        Matrix_Pop();
+        Matrix_Push();Matrix_Translate(sPose.hand==3?8.f:12.f,-16+bob+(sPose.hand==3?8:0),23,MTXMODE_APPLY);
+        Matrix_RotateY(-0.35f,MTXMODE_APPLY);SteveFirstPersonArm(play,3,-4);
+        Matrix_Scale(0.8f,0.8f,0.8f,MTXMODE_APPLY);
+        SteveCuboid(play,sShieldModelFaces[0],0,0,-1.5f,6,11,0.5f);
+        SteveCuboid(play,sShieldModelFaces[1],0,0,2,1,3,3);Matrix_Pop();Matrix_Pop();
+        gSPSetGeometryMode(POLY_OPA_DISP++,G_ZBUFFER);
+        gDPSetRenderMode(POLY_OPA_DISP++,G_RM_AA_ZB_TEX_EDGE,G_RM_AA_ZB_TEX_EDGE2);
+        sFirstPersonPass=false;
+    }
     if (sBlockAlive) {
         SteveTexturedCube(play,sBlock.actor.world.pos.x,sBlock.actor.world.pos.y,sBlock.actor.world.pos.z,
             &sStoneFace,&sStoneFace,&sStoneFace);
