@@ -13,6 +13,8 @@ import net.minecraft.component.DataComponentTypes;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.EntityType;
+import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.registry.tag.DamageTypeTags;
 import net.minecraft.entity.TntEntity;
 import net.minecraft.entity.mob.ZombieEntity;
 import net.minecraft.entity.attribute.EntityAttributes;
@@ -94,7 +96,18 @@ public final class SteveBridgeMod implements ModInitializer {
         world = server.getOverworld();
         GameProfile profile = new GameProfile(UUID.fromString("22eba9f5-d003-4fd3-a9bf-028a92fca065"), "SteveBridge");
         player = new ServerPlayerEntity(server, world, profile, SyncedClientOptions.createDefault()) {
+            @Override public boolean damage(ServerWorld world,DamageSource source,float amount) {
+                // Native bomb actors report damage at their real Zelda positions.
+                // Shadow-arena TNT must not also damage the bounded fake player.
+                return !source.isIn(DamageTypeTags.IS_EXPLOSION) && super.damage(world,source,amount);
+            }
             @Override public ItemStack getMainHandStack() {return slot==9?getInventory().getStack(9):super.getMainHandStack();}
+            @Override public ItemStack getEquippedStack(EquipmentSlot equipment) {
+                return equipment==EquipmentSlot.MAINHAND && slot==9?getInventory().getStack(9):super.getEquippedStack(equipment);
+            }
+            @Override public void equipStack(EquipmentSlot equipment,ItemStack stack) {
+                if(equipment==EquipmentSlot.MAINHAND && slot==9)getInventory().setStack(9,stack);else super.equipStack(equipment,stack);
+            }
             @Override public void setStackInHand(Hand hand,ItemStack stack) {
                 if(hand==Hand.MAIN_HAND && slot==9)getInventory().setStack(9,stack);else super.setStackInHand(hand,stack);
             }

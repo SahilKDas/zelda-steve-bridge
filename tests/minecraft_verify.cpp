@@ -40,6 +40,7 @@ int main() try {
  require(std::any_of(std::begin(pose.cells),std::end(pose.cells),[](const auto& cell){return cell.active&&(cell.flags&1);}),"terrain cut published");
  input.flags=2;input.locked=0;input.slot=9;input.buttons=steve::a;run(6);input.buttons=0;run(8);require(pose.tnt_fuse==-1&&pose.inventory[9].count==64,"unlimited TNT placement");
  input.slot=3;auto flint=pose.inventory[3].durability;input.buttons=steve::a;run(6);input.buttons=0;run(8);require(pose.tnt_fuse>0&&pose.inventory[3].durability==flint-1,"flint ignition");await([&]{return pose.tnt_fuse==0;},"TNT detonation",8);
+ require(pose.inventory_kind[0]==10 && pose.inventory_kind[9]==7,"tenth-slot use preserves first slot");
  input.slot=8;run(12);for(int hit=0;hit<12&&pose.inventory[8].count;hit++){input.damage=20;run(1);input.damage=0;run(75);}require(pose.inventory[8].count==0&&pose.health>0,"held Totem of Undying prevents death");
  std::cout<<"PASS Minecraft protocol 4: ten slots, unlimited stacks, shield, golden apples, armor, elytra/fireworks, axe, obsidian recovery, terrain, TNT and totem\n";SteveBridge_Disconnect();
 }catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}
