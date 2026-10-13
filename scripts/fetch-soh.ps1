@@ -19,6 +19,11 @@ if ($LASTEXITCODE -ne 0) {
     & git -C "$root/vendor/shipwright" apply "$root/src/soh_mod/shipwright.patch"
     if ($LASTEXITCODE -ne 0) { throw 'Cannot apply the pinned SoH integration patch' }
 }
+& git -C "$root/vendor/shipwright/libultraship" apply --reverse --check "$root/src/soh_mod/libultraship.patch" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    & git -C "$root/vendor/shipwright/libultraship" apply "$root/src/soh_mod/libultraship.patch"
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot apply the native terrain renderer patch' }
+}
 Fetch-Pinned "$root/vendor/vcpkg" 'https://github.com/microsoft/vcpkg.git' 'e456309491fd875487bf02b8a0dca76c1b1b00cc'
 & git -C "$root/vendor/vcpkg" checkout --detach HEAD
 foreach ($entry in (Get-Content -LiteralPath "$PSScriptRoot/soh-dependencies.json" -Raw | ConvertFrom-Json)) {

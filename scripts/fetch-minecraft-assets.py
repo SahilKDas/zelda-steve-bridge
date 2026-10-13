@@ -15,6 +15,7 @@ paths += [f"item/{name}.png" for name in ("iron_pickaxe", "iron_sword", "cooked_
 paths += [f"block/{name}.png" for name in ("stone", "cobblestone", "tnt_side", "tnt_top", "tnt_bottom")]
 paths += ["gui/container/inventory.png"]
 paths += ["entity/equipment/humanoid/diamond.png", "entity/equipment/humanoid_leggings/diamond.png", "misc/enchanted_glint_armor.png"]
+paths += ["item/diamond_pickaxe.png","item/diamond_axe.png","item/golden_apple.png","item/firework_rocket.png","item/totem_of_undying.png","block/obsidian.png","entity/horse/horse_skeleton.png"]
 manifest = {"revision": REVISION, "source": BASE, "files": {}}
 for name in paths:
     target = DEST / name
@@ -26,6 +27,11 @@ for name in paths:
 
 def rgba16(img):
     rgba = img.convert("RGBA")
+    if rgba.width % 4:
+        padded=Image.new("RGBA",((rgba.width+3)//4*4,rgba.height));padded.paste(rgba,(0,0))
+        for y in range(rgba.height):
+            for x in range(rgba.width,padded.width):padded.putpixel((x,y),rgba.getpixel((rgba.width-1,y)))
+        rgba=padded
     values = [((r >> 3) << 11) | ((g >> 3) << 6) | ((b >> 3) << 1) | (a >= 128)
               for r, g, b, a in (rgba.get_flattened_data() if hasattr(rgba,"get_flattened_data") else rgba.getdata())]
     # Fast3D consumes big-endian N64 texels, even on a little-endian host.
@@ -53,15 +59,16 @@ for part, (u,v,ou,ov,w,h,d) in enumerate(parts):
         layers.append("{" + ",".join(descriptors) + "}")
     faces.append("{" + ",".join(layers) + "}")
 lines.append("static const SteveSkinFace sSkinFaces[6][2][6] = {" + ",".join(faces) + "};")
-icons = [None,"item/iron_pickaxe.png","item/iron_sword.png","item/cooked_beef.png","item/bow.png",
-         "block/cobblestone.png","item/arrow.png","block/tnt_side.png","item/flint_and_steel.png","item/elytra.png","item/netherite_axe.png"]
+icons = [None,"item/diamond_pickaxe.png","item/iron_sword.png","item/golden_apple.png","item/bow.png",
+         "block/cobblestone.png","item/arrow.png","block/tnt_side.png","item/flint_and_steel.png","item/elytra.png","item/diamond_axe.png",
+         "item/diamond_chestplate.png","item/diamond_chestplate.png","block/obsidian.png","item/firework_rocket.png","item/totem_of_undying.png"]
 descriptors = ["{NULL,0,0}"]
 for kind,name in enumerate(icons[1:],1):
     img=Image.open(DEST/name).convert("RGBA")
     identifier=f"sItem_{kind}"
     lines.append(f"alignas(8) static const u8 {identifier}[] = {{"+",".join(hex(p) for p in rgba16(img))+"};")
     descriptors.append(f"{{{identifier},{img.width},{img.height}}}")
-lines.append("static const SteveSkinFace sItemFaces[11] = {"+",".join(descriptors)+"};")
+lines.append("static const SteveSkinFace sItemFaces[16] = {"+",".join(descriptors)+"};")
 for name,path,rect in [("sTntTop","block/tnt_top.png",None),("sTntBottom","block/tnt_bottom.png",None),("sStoneFace","block/stone.png",None),
                        ("sShieldFace","entity/shield_base.png",(0,0,16,24)),
                        ("sElytraWing","entity/equipment/wings/elytra.png",(22,0,34,22))]:
@@ -101,6 +108,22 @@ for part,(su,sv,w,h,d) in enumerate([(0,0,8,8,8),(16,16,8,12,4),(40,16,4,12,4),
     glint_faces.append("{"+",".join("{"+",".join(faces)+"}" for faces in phase_descriptors)+"}")
 lines.append("static const SteveSkinFace sArmorFaces[8][6] = {"+",".join(armor_faces)+"};")
 lines.append("static const SteveSkinFace sArmorGlintFaces[8][8][6] = {"+",".join(glint_faces)+"};")
+
+def cuboid_faces(name,path,parts):
+    image=Image.open(DEST/path).convert("RGBA")
+    tables=[]
+    for part,(su,sv,w,h,d) in enumerate(parts):
+        descriptors=[]
+        for face,(x,y,fw,fh) in enumerate([(su+d,sv,w,d),(su+d+w,sv,w,d),(su,sv+d,d,h),
+                                          (su+d,sv+d,w,h),(su+d+w,sv+d,d,h),(su+d+w+d,sv+d,w,h)]):
+            identifier=f"{name}_{part}_{face}"
+            lines.append(f"alignas(8) static const u8 {identifier}[] = {{"+",".join(hex(p) for p in rgba16(image.crop((x,y,x+fw,y+fh))))+"};")
+            descriptors.append(f"{{{identifier},{fw},{fh}}}")
+        tables.append("{"+",".join(descriptors)+"}")
+    lines.append(f"static const SteveSkinFace {name}[{len(parts)}][6] = {{"+",".join(tables)+"};")
+cuboid_faces("sWingFaces","entity/equipment/wings/elytra.png",[(22,0,10,20,2)])
+cuboid_faces("sHorseFaces","entity/horse/horse_skeleton.png",[(0,32,10,10,22),(0,35,4,12,7),
+    (0,13,6,5,7),(0,25,4,5,5),(48,21,3,11,3),(19,16,2,3,1),(42,36,3,14,2)])
 generated = ROOT / "src/soh_mod/generated"
 generated.mkdir(exist_ok=True)
 (generated / "minecraft_textures.inc").write_text("\n".join(lines) + "\n")

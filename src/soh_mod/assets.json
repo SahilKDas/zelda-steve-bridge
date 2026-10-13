@@ -1,31 +1,256 @@
 {
-  "format": "minecraft-wide-player-rig-v2",
+  "format": "minecraft-wide-player-rig-v3",
   "source": "SteveActor.cpp",
   "asset_repository": "https://github.com/InventivetalentDev/minecraft-assets",
   "asset_revision": "0c2358f50e81e34def33b75af34fc65409893dc0",
   "skin": "assets/minecraft/textures/entity/player/wide/steve.png",
-  "skin_size": [64,64],
+  "skin_size": [
+    64,
+    64
+  ],
   "units": "Skin pixels; scale 1.125 OoT units per pixel, 20 OoT units per Minecraft block",
   "forward": "+Z",
-  "mesh": {"primitive":"six textured cuboid faces","outer_skin_layers":true,"filter":"nearest"},
+  "mesh": {
+    "primitive": "six textured cuboid faces",
+    "outer_skin_layers": true,
+    "filter": "nearest"
+  },
   "skeleton": [
-    {"limb":"head","center":[0,28,0],"size":[8,8,8],"uv":[0,0],"outer_uv":[32,0]},
-    {"limb":"torso","center":[0,18,0],"size":[8,12,4],"uv":[16,16],"outer_uv":[16,32]},
-    {"limb":"right_arm","pivot":[-5,22,0],"local_center":[-1,-4,0],"size":[4,12,4],"uv":[40,16],"outer_uv":[40,32]},
-    {"limb":"left_arm","pivot":[5,22,0],"local_center":[1,-4,0],"size":[4,12,4],"uv":[32,48],"outer_uv":[48,48]},
-    {"limb":"right_leg","pivot":[-1.9,12,0],"local_center":[0,-6,0],"size":[4,12,4],"uv":[0,16],"outer_uv":[0,32]},
-    {"limb":"left_leg","pivot":[1.9,12,0],"local_center":[0,-6,0],"size":[4,12,4],"uv":[16,48],"outer_uv":[0,48]}
+    {
+      "limb": "head",
+      "center": [
+        0,
+        28,
+        0
+      ],
+      "size": [
+        8,
+        8,
+        8
+      ],
+      "uv": [
+        0,
+        0
+      ],
+      "outer_uv": [
+        32,
+        0
+      ]
+    },
+    {
+      "limb": "torso",
+      "center": [
+        0,
+        18,
+        0
+      ],
+      "size": [
+        8,
+        12,
+        4
+      ],
+      "uv": [
+        16,
+        16
+      ],
+      "outer_uv": [
+        16,
+        32
+      ]
+    },
+    {
+      "limb": "right_arm",
+      "pivot": [
+        -5,
+        22,
+        0
+      ],
+      "local_center": [
+        -1,
+        -4,
+        0
+      ],
+      "size": [
+        4,
+        12,
+        4
+      ],
+      "uv": [
+        40,
+        16
+      ],
+      "outer_uv": [
+        40,
+        32
+      ]
+    },
+    {
+      "limb": "left_arm",
+      "pivot": [
+        5,
+        22,
+        0
+      ],
+      "local_center": [
+        1,
+        -4,
+        0
+      ],
+      "size": [
+        4,
+        12,
+        4
+      ],
+      "uv": [
+        32,
+        48
+      ],
+      "outer_uv": [
+        48,
+        48
+      ]
+    },
+    {
+      "limb": "right_leg",
+      "pivot": [
+        -1.9,
+        12,
+        0
+      ],
+      "local_center": [
+        0,
+        -6,
+        0
+      ],
+      "size": [
+        4,
+        12,
+        4
+      ],
+      "uv": [
+        0,
+        16
+      ],
+      "outer_uv": [
+        0,
+        32
+      ]
+    },
+    {
+      "limb": "left_leg",
+      "pivot": [
+        1.9,
+        12,
+        0
+      ],
+      "local_center": [
+        0,
+        -6,
+        0
+      ],
+      "size": [
+        4,
+        12,
+        4
+      ],
+      "uv": [
+        16,
+        48
+      ],
+      "outer_uv": [
+        0,
+        48
+      ]
+    }
   ],
-  "animations":["idle","walk","mine_swing","attack","block","consume","bow","elytra_glide"],
-  "held_textures":["iron_pickaxe","iron_sword","cooked_beef","bow","cobblestone","arrow","tnt_side","flint_and_steel","elytra","netherite_axe","shield_base"],
-  "elytra_texture":"assets/minecraft/textures/entity/equipment/wings/elytra.png",
-  "arena":{"cube_half_extents":[10,10,10],"offset":[0,10,40],"collision_triangles":12},
-  "tnt":{"maximum_active_charges":8,"cube_half_extents":[10,10,10],"textures":["tnt_side","tnt_top","tnt_bottom"]},
+  "animations": [
+    "idle",
+    "walk",
+    "mine_swing",
+    "attack",
+    "block",
+    "consume",
+    "bow",
+    "elytra_glide",
+    "mounted",
+    "bed_sit",
+    "elytra_fold"
+  ],
+  "held_textures": [
+    "diamond_axe",
+    "diamond_pickaxe",
+    "golden_apple",
+    "flint_and_steel",
+    "cobblestone",
+    "obsidian",
+    "elytra",
+    "firework_rocket",
+    "totem_of_undying",
+    "tnt_side",
+    "shield_base"
+  ],
+  "elytra_texture": "assets/minecraft/textures/entity/equipment/wings/elytra.png",
+  "arena": {
+    "cube_half_extents": [
+      10,
+      10,
+      10
+    ],
+    "offset": [
+      0,
+      10,
+      40
+    ],
+    "collision_triangles": 12
+  },
+  "tnt": {
+    "maximum_active_charges": 8,
+    "cube_half_extents": [
+      10,
+      10,
+      10
+    ],
+    "textures": [
+      "tnt_side",
+      "tnt_top",
+      "tnt_bottom"
+    ]
+  },
   "diamond_armor": {
-    "textures": ["entity/equipment/humanoid/diamond.png","entity/equipment/humanoid_leggings/diamond.png"],
+    "textures": [
+      "entity/equipment/humanoid/diamond.png",
+      "entity/equipment/humanoid_leggings/diamond.png"
+    ],
     "glint": "misc/enchanted_glint_armor.png",
     "phases": 8,
-    "enchantments": ["protection:4","unbreaking:3"],
+    "enchantments": [
+      "protection:4",
+      "unbreaking:3"
+    ],
     "automatic": true
+  },
+  "elytra_mesh": {
+    "size": [
+      10,
+      20,
+      2
+    ],
+    "uv": [
+      22,
+      0
+    ],
+    "mirrored": true,
+    "velocity_dependent_folding": true
+  },
+  "skeleton_horse": {
+    "texture": "assets/minecraft/textures/entity/horse/horse_skeleton.png",
+    "ridden_epona_override": true
+  },
+  "terrain": {
+    "cell_units": 20,
+    "maximum_scene_cells": 128,
+    "static_room_clipping": true,
+    "collision_cutouts": true,
+    "scene_local": true
   }
 }

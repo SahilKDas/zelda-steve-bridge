@@ -1,0 +1,77 @@
+diff --git a/include/fast/interpreter.h b/include/fast/interpreter.h
+index 4c6a705..74124d5 100644
+--- a/include/fast/interpreter.h
++++ b/include/fast/interpreter.h
+@@ -11,6 +11,8 @@
+ #include <string>
+ #include <string_view>
+ #include <memory>
++#include <functional>
++#include <array>
+ 
+ #include "fast/lus_gbi.h"
+ #include "fast/types.h"
+@@ -219,6 +221,8 @@ struct LoadedVertex {
+     float u, v;
+     struct RGBA color;
+     uint8_t clip_rej;
++    float world[3]{};
++    bool terrain{};
+ };
+ 
+ struct RawTexMetadata {
+@@ -382,6 +386,8 @@ class Interpreter {
+     std::shared_ptr<GfxDebugger> GetGfxDebugger() const;
+     void GetDimensions(uint32_t* width, uint32_t* height, int32_t* posX, int32_t* posY);
+     GfxRenderingAPI* GetCurrentRenderingAPI();
++    std::function<bool(const LoadedVertex&,const LoadedVertex&,const LoadedVertex&,
++        std::vector<std::array<LoadedVertex,3>>&)> triangleClipper;
+     void StartFrame();
+     void RunGuiOnly();
+     void Run(Gfx* commands, const std::unordered_map<Mtx*, MtxF>& mtx_replacements);
+@@ -573,4 +579,4 @@ const char* GfxGetOpcodeName(int8_t opcode);
+ extern "C" void gfx_texture_cache_clear();
+ extern "C" void gfx_shader_cache_clear();
+ extern "C" int gfx_create_framebuffer(uint32_t width, uint32_t height, uint32_t native_width, uint32_t native_height,
+-                                      uint8_t resize, bool forceFixedAspect = false);
+\ No newline at end of file
++                                      uint8_t resize, bool forceFixedAspect = false);
+diff --git a/src/fast/interpreter.cpp b/src/fast/interpreter.cpp
+index 2b51ad7..9c88645 100644
+--- a/src/fast/interpreter.cpp
++++ b/src/fast/interpreter.cpp
+@@ -1597,6 +1597,14 @@ void Interpreter::GfxSpVertex(size_t n_vertices, size_t dest_index, const F3DVtx
+                   v->ob[2] * mRsp->MP_matrix[2][3] + mRsp->MP_matrix[3][3];
+ 
+         float world_pos[3] = { 0.0 };
++        {
++            float(*mtx)[4]=mRsp->modelview_matrix_stack[mRsp->modelview_matrix_stack_size-1];
++            d->terrain=true;
++            for(unsigned row=0;row<4;row++)for(unsigned column=0;column<4;column++)
++                if(std::abs(mtx[row][column]-(row==column?1.f:0.f))>0.001f)d->terrain=false;
++            for(unsigned axis=0;axis<3;axis++)d->world[axis]=v->ob[0]*mtx[0][axis]+v->ob[1]*mtx[1][axis]+v->ob[2]*mtx[2][axis]+mtx[3][axis];
++        }
++
+         if (mRsp->geometry_mode & G_LIGHTING_POSITIONAL) {
+             float(*mtx)[4] = mRsp->modelview_matrix_stack[mRsp->modelview_matrix_stack_size - 1];
+             world_pos[0] = v->ob[0] * mtx[0][0] + v->ob[1] * mtx[1][0] + v->ob[2] * mtx[2][0] + mtx[3][0];
+@@ -1777,6 +1785,19 @@ void Interpreter::GfxSpModifyVertex(uint16_t vtx_idx, uint8_t where, uint32_t va
+ }
+ 
+ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bool is_rect) {
++    if(!is_rect && vtx1_idx<MAX_VERTICES && vtx2_idx<MAX_VERTICES && vtx3_idx<MAX_VERTICES && triangleClipper) {
++        std::vector<std::array<LoadedVertex,3>> triangles;
++        if(triangleClipper(mRsp->loaded_vertices[vtx1_idx],mRsp->loaded_vertices[vtx2_idx],mRsp->loaded_vertices[vtx3_idx],triangles)) {
++            auto saved0=mRsp->loaded_vertices[MAX_VERTICES],saved1=mRsp->loaded_vertices[MAX_VERTICES+1],saved2=mRsp->loaded_vertices[MAX_VERTICES+2];
++            for(const auto& triangle:triangles) {
++                for(unsigned i=0;i<3;i++)mRsp->loaded_vertices[MAX_VERTICES+i]=triangle[i];
++                GfxSpTri1(MAX_VERTICES,MAX_VERTICES+1,MAX_VERTICES+2,false);
++            }
++            mRsp->loaded_vertices[MAX_VERTICES]=saved0;mRsp->loaded_vertices[MAX_VERTICES+1]=saved1;mRsp->loaded_vertices[MAX_VERTICES+2]=saved2;
++            return;
++        }
++    }
++
+     struct LoadedVertex* v1 = &mRsp->loaded_vertices[vtx1_idx];
+     struct LoadedVertex* v2 = &mRsp->loaded_vertices[vtx2_idx];
+     struct LoadedVertex* v3 = &mRsp->loaded_vertices[vtx3_idx];
