@@ -38,3 +38,53 @@ Post-launch fixes and armor release:
   Its final 900-frame run passed mining, TNT, five enemy collisions, inventory and flight.
 - C++26 transport tests and real Minecraft interaction tests passed again. Final
   workspace usage is approximately 3.168 billion bytes, below the five-billion ceiling.
+
+## Ten-slot and terrain release — 2026-10-12
+
+The packaged release now uses protocol 4: 128-byte input, 5376-byte response,
+128 scene-local world cells and ten virtual hotbar slots. Both pinned source
+patches pass reverse-application checks against the compiled vendor trees.
+
+Final real Minecraft regression:
+
+```text
+PASS Minecraft protocol 4: ten slots, unlimited stacks, shield, golden apples, armor, elytra/fireworks, axe, obsidian recovery, terrain, TNT and totem
+```
+
+The test also checks that using virtual slot 0 does not overwrite the diamond axe
+in slot 1. Actual vanilla equipment writes are redirected to the tenth inventory
+slot. The final server measured 422,985,728 bytes peak working memory,
+453,107,712 bytes peak private memory and 150,770,291 bytes runtime storage.
+
+Final packaged native regression:
+
+```text
+PASS native SoH: rendered=1200 mining=3 TNT_place=1 TNT_prime=1 TNT_explode=2 axe_collisions=5 inventory_swap=1 inventory_draws=75 textures=14 elytra=1 fuse=0 charge_fuse=0 enemy_damaged=1 terrain=1 clipped=5544 obsidian=1/1
+```
+
+The native test excavated an actual static Zelda floor: its queried height moved
+from 0 to -20 units after the Minecraft mining acknowledgement. Room triangle
+clipping was invoked, and obsidian count moved 32→31→32 after placement and axe
+recovery. Enemy combat, TNT and flight ran through the actual SoH actor hooks.
+Test-specific positioning prevents unrelated enemy movement from disrupting the
+scripted placement checks; production movement is unaffected. Existing player
+inventory is restored after verification.
+
+Both CTest cases passed: separate-process transport and geometric terrain clipping
+(area, UV interpolation and preservation of unrelated triangles). Native item
+textures now pad rows to the Fast3D eight-byte stride, including narrow horse and
+elytra faces. Official wing geometry/UVs, mounted skeleton-horse replacement and
+opening-house seated poses are implemented. The automated test verifies rendering
+execution, not their visual appearance; the full opening cutscene has not yet
+received a visual playback check.
+
+Terrain edits are limited to 128 cells in the current scene and clear on scene
+transition. Static room geometry is clipped; moving actors are excluded. Native
+dynamic collision capacity can limit simultaneously collidable placed blocks.
+TNT remains limited to eight simultaneous charges. These are bounded integration
+features, not a persistent voxel conversion of the entire game.
+
+The stripped packaged executable is 33,543,168 bytes. The parent workspace audit
+measured 3,339,256,516 logical bytes before these documentation changes, below the
+5,000,000,000-byte ceiling. The launcher remains `Play-Steve.cmd`; the game is
+closed after the automated checks.

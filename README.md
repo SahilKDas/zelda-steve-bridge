@@ -1,4 +1,4 @@
-# Zelda–Steve native Minecraft bridge
+# Zeldaâ€“Steve native Minecraft bridge
 
 A native C++26 shared-memory bridge connects Ship of Harkinian 9.3.0 to a real Minecraft Java 1.21.11 Fabric server. Minecraft owns inventory, hotbar selection, durability, health, mining, TNT, combat cooldowns and elytra physics. SoH supplies its world, enemy collision/reactions and camera. Steve uses the official 1.21.11 wide skin, standard six-part dimensions and joint pivots, outer skin layers, textured held items and elytra wings.
 
@@ -27,29 +27,64 @@ Use `-AcceptEula` only after accepting the [Minecraft EULA](https://www.minecraf
 
 ## Controls and game behavior
 
-The default keyboard mapping is **WASD** to move, **X** for A (use/place/ignite),
-**C** for B (mine/attack), **R** to shield, **Z** to target, **Left/Right arrows** for previous/next
-hotbar slot, and **Space** for Start/pause. **I** opens the inventory and **V** toggles
-gliding while airborne. SoH controller bindings can be changed in its input settings.
+The default Ocarina of Time keyboard mapping is **WASD** to move, **X** for A
+(action/use), **C** for B (attack), **R** for shield, **Z** for lock-on and **Space**
+for Start/pause. Zelda uses context-sensitive A actions and automatic ledge jumps.
+Controller bindings remain configurable in SoH's input settings.
 
-| SoH input | Minecraft action |
-|---|---|
-| B | Mine with the pickaxe; otherwise attack/swing |
-| R | Use the offhand shield |
-| Hold A | Use held food or draw the bow |
-| Release A | Release the bow |
-| C-left / C-right | Previous / next hotbar slot |
-| Z | Supply the current lock-on target |
-| I | Open/close Steve's 36-slot inventory; click two slots to swap |
-| V, while airborne | Toggle gliding with an equipped elytra |
+Steve adds **1â€“9 and 0**, or the **mouse wheel**, to select the ten hotbar slots.
+Left/Right arrows also cycle slots. **I** opens/closes the inventory: click two slots
+to swap their contents. Select the elytra there and click **Equip selected / swap
+chest**, then press **V** while airborne to toggle gliding. Select fireworks and
+press **X** during flight for a boost. Landing ends flight.
 
-Select TNT in the hotbar and tap A to place it ahead of Steve. Select flint and steel and tap A to ignite the nearest placed charge in reach. Up to eight charges are synchronized with native meshes and collision; Minecraft drives their fuse and detonation, and SoH applies the explosion through its bomb actor. Charges belong to the current scene and are cleared when it unloads.
+| Key | Starting item | Supply |
+|---|---|---|
+| 1 | Diamond axe | Normal durability |
+| 2 | Diamond pickaxe | Normal durability |
+| 3 | Unenchanted golden apples | Infinite |
+| 4 | Flint and steel | Normal durability |
+| 5 | Cobblestone | Infinite |
+| 6 | Obsidian | 32 blocks |
+| 7 | Elytra | Unbreakable |
+| 8 | Fireworks | Infinite |
+| 9 | Totem of Undying | One |
+| 0 | TNT | Infinite |
 
-Select an elytra in the inventory and use **Equip selected / swap chest**. Walk off a ledge and press V to glide; landing ends flight. Minecraft supplies glide velocity, while the native player hook applies movement and checks Zelda's floor and walls. Netherite-axe attacks use a Minecraft combat proxy for damage, cooldown and durability, then enter Zelda's normal attack-collider pipeline for enemy damage and reactions. Nearby enemies can be attacked directly or through Z targeting.
+Hold **C/B** with the pickaxe to mine the surface ahead, or with the axe to attack
+an enemy. The diamond axe can also recover placed obsidian. Select cobblestone,
+obsidian or TNT and tap **X/A** to place it against the aimed surface. Select flint
+and steel and tap X/A to ignite a nearby charge. Hold X/A with golden apples to
+eat. Hold R to block with the locked offhand shield. The totem must be selected
+when fatal damage arrives. Golden apples, blocks, TNT and fireworks refill their
+stacks after use; `INF` denotes these supplies.
 
-The initial hotbar contains an iron pickaxe, iron sword, eight cooked beef, a bow, a netherite axe, 16 TNT, flint and steel, an elytra and 64 arrows. A shield occupies the offhand. Older bridge saves receive the new equipment once without overwriting occupied slots. Player inventory and chest equipment use vanilla item-component codecs and save every five seconds and at shutdown in `bridge-world/steve-player.json`. Zelda damage is translated to Minecraft health; returned health drives Zelda's hearts. Respawn requests restore health and hunger.
+Minecraft owns damage, tool durability, attack cooldowns, armor, food and flight.
+SoH applies attacks through its native enemy collision system and TNT explosions
+through native bomb actors. Up to eight TNT charges can exist simultaneously.
+Shadow-server TNT damage is suppressed to avoid applying the same native
+explosion twice. Diamond armor starts enchanted with Protection IV and Unbreaking
+III; swapping the chestplate for elytra retains the chestplate in the inventory.
 
-The backend uses a bounded flat arena with a bedrock floor and a stone mining target. The native cube has dynamic collision and disappears after the authoritative mining acknowledgement. Entering a different Zelda scene anchors the arena at the settled player position and restores its test block. Enemy combat uses relative positions, and TNT maintains native world positions while Minecraft simulates the corresponding arena objects. This bridge does not turn every Zelda surface into Minecraft terrain or add a crafting interface. Zelda collisions and animation-derived limb positions are retained before replacing render commands.
+Static Zelda room surfaces can be excavated in 20-unit cells. The renderer clips
+holes from room triangles and collision queries skip the removed surface. Native
+floor/wall helpers let Steve descend into the holes. Placed blocks retain native
+collision. This implementation keeps at most 128 edited cells per scene; edits and
+charges clear when changing scenes, and native dynamic collision capacity can
+limit the number of simultaneously collidable blocks. Moving actors, enemies and
+animated scenery are not excavated. There is no crafting interface.
+
+The first run of this loadout version replaces the first ten inventory slots with
+the starter kit. The remaining inventory and equipment persist in
+`bridge-world/steve-player.json`, saved every five seconds and at shutdown. Minecraft's
+nine-slot selection API is adapted to a tenth virtual slot without replacing slot
+1, so TNT and the totem both fit. The offhand is restored to a shield automatically.
+
+Steve's mounted pose uses bent Minecraft-style legs, and a ridden Epona is replaced
+with a skeleton-horse mesh using its official texture. The opening Link's House
+bed actions use a seated pose. Elytra have mirrored 10Ã—20Ã—2 wing geometry, original
+UVs and velocity-dependent folding. These cutscene poses are implemented but their
+full opening-sequence appearance has not been visually verified.
 
 The override defaults on in this patched build when the backend is connected. Set `gEnhancements.SteveBridge` to `0` to disable it. Without fresh backend state, Link's normal renderer is used. SoH's normal controller mapping remains available; item counts and durability are available in the inventory. The diagnostic text overlay is disabled by default; developers can opt in with `gEnhancements.SteveBridgeDebugOverlay=1`.
 
@@ -61,11 +96,11 @@ equipment textures with an animated purple glint masked to their cutouts. Chestp
 and elytra swap through **Equip selected / swap chest**; the chestplate stays in the
 selected inventory slot during flight. Armor and enchantments persist with inventory.
 Equipment presence and glint bits occupy response byte 1068 and the existing C-ABI
-pose padding, preserving packet sizes and protocol version 3.
+pose padding, using protocol version 4.
 
-`src/bridge/protocol.hpp` specifies a 128-byte input and a 1280-byte response, both aligned to 64 bytes. Protocol version 3 adds 36 inventory slots, equipment, acknowledged commands, combat results, flight velocity and eight TNT states. The two SPSC rings expose mapped slots directly. Acquire/release atomics transfer ownership; the daemon owns mapping lifecycle and updates a heartbeat without relaying or copying packets between rings. JNI exposes the same slots as direct byte buffers. Snapshot copies are made only for frontend interpolation and Java reads fields directly from the mapped input.
+`src/bridge/protocol.hpp` specifies a 128-byte input and a 5376-byte response, both aligned to 64 bytes. Protocol version 4 includes 128 world cells alongside 36 inventory slots, equipment, acknowledged commands, combat results, flight velocity and eight TNT states. The two SPSC rings expose mapped slots directly. Acquire/release atomics transfer ownership; the daemon owns mapping lifecycle and updates a heartbeat without relaying or copying packets between rings. JNI exposes the same slots as direct byte buffers. Snapshot copies are made only for frontend interpolation and Java reads fields directly from the mapped input.
 
-The input carries transform, buttons and preserved press edges, target/lock-on, slot, scene, damage and respawn flags. The response carries vanilla numeric item registry IDs, components represented by damage/count/remaining durability, nine hotbar slots, hand/swing, health, destruction stage, eight audio events and a monotonic block-break acknowledgement. Transport version and size are checked. Exactly one producer and consumer own each ring. Full rings apply backpressure; unconsumed slots are never overwritten. Multiple button edges within a single Minecraft tick coalesce.
+The input carries transform, buttons and preserved press edges, target/lock-on, slot, scene, damage and respawn flags. The response carries vanilla numeric item registry IDs, components represented by damage/count/remaining durability, ten virtual hotbar slots, hand/swing, health, destruction stage, eight audio events and a monotonic block-break acknowledgement. Transport version and size are checked. Exactly one producer and consumer own each ring. Full rings apply backpressure; unconsumed slots are never overwritten. Multiple button edges within a single Minecraft tick coalesce.
 
 Minecraft ticks at 20 Hz. Continuous arm poses interpolate one tick behind; inventories and events remain discrete. Stale input stops actions after 250 ms, stale responses fall back to Link, and a stalled session is released after two seconds. This relies on native lock-free atomics on the same machine and x64 ABI, rather than a portable network wire format. Windows cross-compiler interoperability is exercised by the GCC/JNI backend and MSVC frontend. POSIX mapping support is implemented but the full Linux integration has not been tested here.
 
@@ -80,11 +115,11 @@ ctest --test-dir build --output-on-failure
 ./scripts/disk-budget.ps1
 ```
 
-The deterministic separate-process harness (`headless_mc.exe`) exists only for transport regression tests. The production launcher uses the actual Fabric server. Native tests cover 100,000 concurrent ring transfers, wraparound/full queues, button edges, audio ordering, stale-state fallback and actor pose. The real-server test uses the same C API as SoH and verifies stone mining, drops, durability, shielding, health, food, bow release/cancellation, inventory swaps, elytra wear, axe combo hits, TNT placement/ignition and chain reactions. Verification temporarily supplies fresh player equipment and restores the existing inventory after server shutdown.
+The deterministic separate-process harness (`headless_mc.exe`) exists only for transport regression tests. The production launcher uses the actual Fabric server. Native tests cover 100,000 concurrent ring transfers, wraparound/full queues, button edges, audio ordering, stale-state fallback and actor pose. The real-server test uses the same C API as SoH and verifies stone mining, drops, durability, shielding, health, golden apples, infinite stacks, fireworks boosts, locked shield, inventory swaps, unbreakable elytra, axe combo hits, TNT placement/ignition and chain reactions. Verification temporarily supplies fresh player equipment and restores the existing inventory after server shutdown.
 
-`verify-soh.ps1` launches the compiled game with an isolated temporary debug save in `runtime/soh-test`. Its opt-in actor test checks rendered frames, mining collision removal, item use, inventory rendering and swaps, TNT placement/priming/explosion, successive native axe collisions and enemy health loss, and actual gliding movement. The result is written to `runtime/soh-test/steve-in-game-test.log`. Use `-KeepOpen` to inspect the model after the test, then close the game to finish verification.
+`verify-soh.ps1` launches the compiled game with an isolated temporary debug save in `runtime/soh-test`. Its opt-in actor test checks rendered frames, mining collision removal, item use, inventory rendering and swaps, TNT placement/priming/explosion, successive native axe collisions and enemy health loss, actual gliding movement, static terrain clipping/collision removal, and obsidian placement/recovery. The result is written to `runtime/soh-test/steve-in-game-test.log`. Use `-KeepOpen` to inspect the model after the test, then close the game to finish verification.
 
-A fresh Minecraft equipment test measured 422,412,288 bytes peak working memory, 452,481,024 bytes peak private memory, and 150,756,538 bytes runtime storage. The supervisor enforces a 480,000,000-byte committed-memory Job Object limit, checks peak working memory against 500,000,000 bytes, and stops if runtime storage reaches 200,000,000 bytes. It launches without a window and kills its child on supervisor termination. The fixed spawn bypasses expensive vanilla spawn-region pre-generation.
+The final Minecraft equipment test measured 422,985,728 bytes peak working memory, 453,107,712 bytes peak private memory, and 150,770,291 bytes runtime storage. The supervisor enforces a 480,000,000-byte committed-memory Job Object limit, checks peak working memory against 500,000,000 bytes, and stops if runtime storage reaches 200,000,000 bytes. It launches without a window and kills its child on supervisor termination. The fixed spawn bypasses expensive vanilla spawn-region pre-generation.
 
 The entire parent workspace, including hidden Git history and caches, must remain below **5,000,000,000 bytes**. `disk-budget.ps1` audits that scope and warns at 4 GB. Release builds strip GCC executable symbols; SoH Release disables PDB generation and uses static dependencies. Pinned source revisions are fetched at depth one. Do not bundle an additional JDK or large world. Build/cache/runtime/native binaries and game assets are ignored. Keep the audit below the ceiling before downloading dependencies or rebuilding.
 
