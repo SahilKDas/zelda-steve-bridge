@@ -88,3 +88,19 @@ The stripped packaged executable is 33,543,168 bytes. The parent workspace audit
 measured 3,339,256,516 logical bytes before these documentation changes, below the
 5,000,000,000-byte ceiling. The launcher remains `Play-Steve.cmd`; the game is
 closed after the automated checks.
+
+## Manual jump and pillar placement — 2026-10-12
+
+J requests the native player's jumping action, preserving Zelda's floor, ceiling
+and landing handling. Airborne placement raycasts directly beneath the feet and
+requires clearance above the new cell before submitting it to Minecraft.
+`scripts/verify-soh.ps1 -Jump` passed the actual native jump, authoritative
+cobblestone placement and landing on its collision surface:
+
+```text
+PASS native manual jump: peak=54.00 underfoot_block=1 landed_y=45.00
+```
+
+Heights in this diagnostic are relative to the initial warp origin.
+`scripts/play-forest.ps1` boots at Kokiri Forest's central area in a temporary
+Zelda debug save and restores the previous boot/warp settings when the game closes.

@@ -13,6 +13,9 @@ extern "C" {
 static StevePose sPose;
 static int sConnected;
 static uint32_t sSlot;
+static int sJumpRequested;
+void SteveActor_RequestJump(void) {sJumpRequested=1;}
+void StevePlayer_Jump(Player* player,PlayState* play);
 void SteveActor_SelectSlot(uint32_t slot) {sSlot=slot%10;}
 static uint32_t sSceneSerial;
 static int sAnchorFrames;
@@ -61,6 +64,7 @@ int SteveActor_IsAttackInfo(const ColliderInfo* info) {
     return matched;
 }
 static int sTestMode=-1, sTestFrame, sRenderedFrames;
+static float sJumpTestPeak;
 static uint32_t sTestPick, sTestFood, sTestBow, sTestArrows;
 static int sTestShield, sTestDamage, sTestCollision;
 static int sTestBasePassed,sTestTntPlaced,sTestTntPrimed,sTestTntExplosion,sTestSwap,sTestGlide;
@@ -70,7 +74,8 @@ static Vec3f sTestFlightStart,sTestTerrain;
 static float sTestGroundBefore;
 static int sTestTerrainCut,sTestObsidianPlaced,sTestObsidianRecovered;
 static void SteveActor_TestInput(SteveInput* packet) {
-    if (sTestMode < 0) sTestMode=getenv("STEVE_IN_GAME_TEST") != NULL;
+    if (sTestMode < 0) sTestMode=getenv("STEVE_JUMP_TEST")?2:(getenv("STEVE_IN_GAME_TEST") != NULL);
+    if(sTestMode==2) return;
     if (!sTestMode) return;
     packet->buttons=0; packet->locked=0; packet->slot=1;
     if (!sConnected) { packet->flags|=1; return; }
@@ -246,6 +251,22 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
         sBlockAlive=0; sLastTick=0;
         sOrigin=actor->world.pos; sSceneSerial++; sAnchorFrames--;
     }
+    if(getenv("STEVE_JUMP_TEST")) {
+        sTestMode=2;
+        if(sConnected) {
+            sTestFrame++;sSlot=4;
+            if(sTestFrame==20){actor->world.pos.x=5;actor->world.pos.z=5;sOrigin=actor->world.pos;}
+            if(sTestFrame==40)sJumpRequested=1;
+            input->cur.button=(sTestFrame>=46 && sTestFrame<=50)?BTN_A:0;
+        }
+    }
+    const int jumpRequested=sJumpRequested;
+    sJumpRequested=0;
+    if(jumpRequested && sConnected && SteveActor_HudAllowed() && !SteveUi_IsOpen() &&
+       !sPose.flying && (actor->bgCheckFlags&BGCHECKFLAG_GROUND) &&
+       !(player->stateFlags1&(PLAYER_STATE1_INPUT_DISABLED|PLAYER_STATE1_ON_HORSE))) {
+        StevePlayer_Jump(player,play);
+    }
     if (input->press.button & BTN_CRIGHT) sSlot = (sSlot + 1) % 10;
     if (input->press.button & BTN_CLEFT) sSlot = (sSlot + 9) % 10;
     packet.x = actor->world.pos.x / 20.0f;
@@ -323,6 +344,24 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
                 const SteveCell* cell=&sPose.cells[i];
                 if(!placing){packet.tx=cell->x;packet.ty=cell->y-((cell->flags&1)?1.f:0.f);packet.tz=cell->z;}
                 break;
+            }
+        }
+    }
+    // While airborne, place on the supporting surface directly beneath Steve.
+    // Require space above its top so placement cannot intersect his feet.
+    if(sTestMode!=1 && !(actor->bgCheckFlags&BGCHECKFLAG_GROUND) &&
+       (packet.buttons&1) && !packet.target_enemy &&
+       (sPose.item_kind==5 || sPose.item_kind==13 || sPose.item_kind==7)) {
+        Vec3f from=actor->world.pos,to=from,hit;
+        CollisionPoly* poly=NULL; s32 bgId;
+        to.y-=80;
+        if(BgCheck_EntityLineTest1(&play->colCtx,&from,&to,&hit,&poly,false,true,false,true,&bgId)) {
+            float centerY=floorf((hit.y+1.f)/20.f)*20.f+10.f;
+            if(actor->world.pos.y>=centerY+12.f) {
+                packet.tx=floorf(actor->world.pos.x/20.f)+0.5f;
+                packet.ty=centerY/20.f;
+                packet.tz=floorf(actor->world.pos.z/20.f)+0.5f;
+                packet.locked=1;packet.flags=(packet.flags&~4u)|8u;
             }
         }
     }
@@ -429,6 +468,19 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
     }
 }
 void SteveActor_PostUpdate(Actor* actor,PlayState* play) {
+    if(sTestMode==2) {
+        const float rise=actor->world.pos.y-sOrigin.y;
+        if(rise>sJumpTestPeak)sJumpTestPeak=rise;
+        if(sTestFrame==180) {
+            int placed=0;
+            for(int i=0;i<128;i++)if(sPose.cells[i].active && sPose.cells[i].kind==5 &&
+                fabsf(sPose.cells[i].x-0.5f)<0.1f && fabsf(sPose.cells[i].z-0.5f)<0.1f)placed=1;
+            FILE* log=fopen("steve-jump-test.log","w");
+            if(log){fprintf(log,"%s native manual jump: peak=%.2f underfoot_block=%d landed_y=%.2f\n",
+                sJumpTestPeak>22 && placed && rise>=19?"PASS":"FAIL",sJumpTestPeak,placed,rise);fclose(log);}
+            SteveActor_RequestExit();
+        }
+    }
     if(sTestMode==1 && sTestFrame>=890){actor->world.pos=sOrigin;actor->velocity={0,0,0};actor->speedXZ=0;}
     if(sConnected && sPose.flying) {
         if(!sWasFlying) sGravityBeforeFlight=actor->gravity;

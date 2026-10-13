@@ -246,7 +246,7 @@ index 0659cac2..2a2dd0a6 100644
 + } else EnHorse_DrawOriginal(actor,play);
 +}
 diff --git a/soh/src/overlays/actors/ovl_player_actor/z_player.c b/soh/src/overlays/actors/ovl_player_actor/z_player.c
-index 09dfb520..cc6b071c 100644
+index 09dfb520..37bd7173 100644
 --- a/soh/src/overlays/actors/ovl_player_actor/z_player.c
 +++ b/soh/src/overlays/actors/ovl_player_actor/z_player.c
 @@ -6,6 +6,12 @@
@@ -262,7 +262,20 @@ index 09dfb520..cc6b071c 100644
  
  #include "overlays/actors/ovl_Bg_Heavy_Block/z_bg_heavy_block.h"
  #include "overlays/actors/ovl_Door_Shutter/z_door_shutter.h"
-@@ -12191,7 +12197,7 @@ static Vec3f sDogSpawnOffset = { 0.0f, 0.0f, -30.0f };
+@@ -4917,6 +4923,12 @@ void func_808389E8(Player* this, LinkAnimationHeader* anim, f32 arg2, PlayState*
+     func_80838940(this, anim, arg2, play, NA_SE_VO_LI_SWORD_N);
+ }
+ 
++/* Bridge uses the native airborne action so floor, ceiling and landing rules apply. */
++void StevePlayer_Jump(Player* player, PlayState* play) {
++    func_808389E8(player, &gPlayerAnim_link_normal_jump, 9.0f, play);
++}
++
++
+ s32 Player_ActionHandler_12(Player* this, PlayState* play) {
+     s32 sp3C;
+     LinkAnimationHeader* anim;
+@@ -12191,7 +12203,7 @@ static Vec3f sDogSpawnOffset = { 0.0f, 0.0f, -30.0f };
  
  s32 Player_UpdateNoclip(Player* this, PlayState* play);
  
@@ -271,7 +284,7 @@ index 09dfb520..cc6b071c 100644
      static Vec3f sDogSpawnPos;
      Player* this = (Player*)thisx;
      s32 dogParams;
-@@ -12429,7 +12435,7 @@ void Player_DrawGameplay(PlayState* play, Player* this, s32 lod, Gfx* cullDList,
+@@ -12429,7 +12441,7 @@ void Player_DrawGameplay(PlayState* play, Player* this, s32 lod, Gfx* cullDList,
      CLOSE_DISPS(play->state.gfxCtx);
  }
  
@@ -280,7 +293,7 @@ index 09dfb520..cc6b071c 100644
      PlayState* play = play2;
      Player* this = (Player*)thisx;
  
-@@ -16612,3 +16618,22 @@ void Player_StartTalking(PlayState* play, Actor* actor) {
+@@ -16612,3 +16624,22 @@ void Player_StartTalking(PlayState* play, Actor* actor) {
      F(sHeldItemButtonIsHeldDown)
  
  SHIP_SAVESTATE_DEFINE(Player, PLAYER_SHIP_SAVESTATE_FIELDS)

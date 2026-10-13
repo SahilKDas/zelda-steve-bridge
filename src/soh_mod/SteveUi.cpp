@@ -11,6 +11,7 @@
 #include <string>
 #include <cstdlib>
 extern "C" void SteveActor_SelectSlot(uint32_t slot);
+extern "C" void SteveActor_RequestJump(void);
 extern "C" int SteveActor_HudAllowed(void);
 extern "C" int SteveUi_IsOpen(void);
 namespace {
@@ -121,6 +122,7 @@ std::shared_ptr<Hotbar> hotbar;
 extern "C" int SteveUi_IsOpen() { return inventory && inventory->IsVisible(); }
 extern "C" void SteveUi_Frame(int scancode) {
     if(!inventory) {inventory=std::make_shared<Inventory>();gameGui()->AddGuiWindow(inventory);hotbar=std::make_shared<Hotbar>();gameGui()->AddGuiWindow(hotbar);}
+    if(scancode==static_cast<int>(Ship::KbScancode::LUS_KB_J) && !inventory->IsVisible()) SteveActor_RequestJump();
     if(scancode==static_cast<int>(Ship::KbScancode::LUS_KB_I)) inventory->ToggleVisibility();
     if(scancode==static_cast<int>(Ship::KbScancode::LUS_KB_V) && !inventory->IsVisible()) SteveBridge_RequestCommand(4,0,0);
     if(scancode>=static_cast<int>(Ship::KbScancode::LUS_KB_1) && scancode<=static_cast<int>(Ship::KbScancode::LUS_KB_0))

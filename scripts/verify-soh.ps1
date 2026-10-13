@@ -1,4 +1,4 @@
-param([string]$Java = "$env:JAVA_HOME/bin/java.exe", [switch]$KeepOpen)
+param([string]$Java = "$env:JAVA_HOME/bin/java.exe", [switch]$KeepOpen, [switch]$Jump)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $test = "$root/runtime/soh-test"
@@ -25,23 +25,27 @@ Get-ChildItem -LiteralPath "$root/cache/minecraft-assets" | Copy-Item -Destinati
 }
 '@ | Set-Content -LiteralPath "$test/shipofharkinian.json"
 if(Test-Path -LiteralPath "$test/steve-in-game-test.log") { Remove-Item -LiteralPath "$test/steve-in-game-test.log" }
+$oldJump=$env:STEVE_JUMP_TEST
 $oldTest=$env:STEVE_IN_GAME_TEST
 $oldExit=$env:STEVE_IN_GAME_TEST_EXIT
 $playerFile="$root/runtime/minecraft/bridge-world/steve-player.json"
 $savedPlayer=if(Test-Path -LiteralPath $playerFile) { [IO.File]::ReadAllBytes($playerFile) } else { $null }
 if(Test-Path -LiteralPath $playerFile) { Remove-Item -LiteralPath $playerFile }
 try {
+    if($Jump){$env:STEVE_JUMP_TEST='1'}
     $env:STEVE_IN_GAME_TEST='1'
     if(-not $KeepOpen) { $env:STEVE_IN_GAME_TEST_EXIT='1' }
     else { Remove-Item Env:STEVE_IN_GAME_TEST_EXIT -ErrorAction SilentlyContinue }
     & "$PSScriptRoot/run.ps1" -Java $Java -GameDirectory $test
 } finally {
+    $env:STEVE_JUMP_TEST=$oldJump
     $env:STEVE_IN_GAME_TEST=$oldTest
     $env:STEVE_IN_GAME_TEST_EXIT=$oldExit
     if($null -ne $savedPlayer) { [IO.File]::WriteAllBytes($playerFile,$savedPlayer) }
     elseif(Test-Path -LiteralPath $playerFile) { Remove-Item -LiteralPath $playerFile }
 }
-$result=Get-Content -LiteralPath "$test/steve-in-game-test.log" -Raw
+$resultFile=if($Jump){"steve-jump-test.log"}else{"steve-in-game-test.log"}
+$result=Get-Content -LiteralPath "$test/$resultFile" -Raw
 Write-Output $result
 if(-not $result.StartsWith('PASS ')) { throw 'Native SoH integration verification failed' }
 & "$PSScriptRoot/disk-budget.ps1"

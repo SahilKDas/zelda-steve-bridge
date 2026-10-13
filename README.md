@@ -4,7 +4,8 @@ A native C++26 shared-memory bridge connects Ship of Harkinian 9.3.0 to a real M
 
 ## Windows setup
 
-This workspace is already built and packaged. Double-click `Play-Steve.cmd` to launch the local Minecraft service and SoH together. It uses `JAVA_HOME` or discovers the installed Microsoft Java 21 JDK. Closing SoH saves and stops the backend.
+This workspace is already built and packaged. Double-click `Play-Steve.cmd` to launch the local Minecraft service and SoH together. It uses `JAVA_HOME` or discovers the installed Microsoft Java 21 JDK. Closing SoH saves and stops the backend. To start in central Kokiri Forest with a
+temporary Zelda save, run `./scripts/play-forest.ps1`; existing Zelda saves are retained.
 
 Prerequisites: Windows x64, Java **21** JDK, Python with Pillow, Git, MSYS2 UCRT64 GCC supporting `-std=c++26`, CMake, and Visual Studio C++ tools with CMake/Ninja and `/std:c++latest`. The installed JDK is external to the workspace; it is not downloaded or bundled. MSVC preview mode is used because complete C++26 support is not yet available. Reflection and contracts are not required by this implementation.
 
@@ -33,7 +34,9 @@ for Start/pause. Zelda uses context-sensitive A actions and automatic ledge jump
 Controller bindings remain configurable in SoH's input settings.
 
 Steve adds **1â€“9 and 0**, or the **mouse wheel**, to select the ten hotbar slots.
-Left/Right arrows also cycle slots. **I** opens/closes the inventory: click two slots
+Left/Right arrows also cycle slots. **J** performs a manual jump from solid ground. While airborne, tap **X** with
+cobblestone or obsidian to place a block directly beneath your feet; jump high
+enough to clear its top. **I** opens/closes the inventory: click two slots
 to swap their contents. Select the elytra there and click **Equip selected / swap
 chest**, then press **V** while airborne to toggle gliding. Select fireworks and
 press **X** during flight for a boost. Landing ends flight.
