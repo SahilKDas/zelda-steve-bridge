@@ -3,6 +3,8 @@
 #include <ship/window/Window.h>
 #include <ship/window/gui/GuiWindow.h>
 #include <fast/Fast3dGui.h>
+#include <fast/Fast3dWindow.h>
+#include <libultraship/bridge/consolevariablebridge.h>
 #include <fast/resource/type/Texture.h>
 #include <ship/controller/controldevice/controller/mapping/keyboard/KeyboardKeyToAnyMapping.h>
 #include <stb_image.h>
@@ -12,6 +14,7 @@
 #include <cstdlib>
 extern "C" void SteveActor_SelectSlot(uint32_t slot);
 extern "C" void SteveActor_RequestJump(void);
+extern "C" void SteveActor_RequestUse(void);
 extern "C" int SteveActor_HudAllowed(void);
 extern "C" int SteveUi_IsOpen(void);
 namespace {
@@ -120,7 +123,29 @@ public:
 std::shared_ptr<Hotbar> hotbar;
 }
 extern "C" int SteveUi_IsOpen() { return inventory && inventory->IsVisible(); }
+// Native mouse order is left=0, middle=1, right=2 (different from ImGui).
+static bool SteveMouseButton(bool pressed,int button) {
+    if(!CVarGetInteger("gEnhancements.SteveBridge",1) || (button!=1 && button!=2))return false;
+    // Consume releases too: controller mappings never receive these reserved buttons.
+    if(pressed && SteveActor_HudAllowed() && !SteveUi_IsOpen() && !gameGui()->GetMenuOrMenubarVisible() && !gameGui()->IsMouseOverActivePopup()) {
+        if(button==1)SteveActor_RequestJump();
+        else {
+            StevePose pose{};
+            if(SteveBridge_GetPose(&pose)) {
+                if(pose.flying && pose.item_kind==14)SteveActor_RequestUse();
+                else SteveBridge_RequestCommand(4,0,0);
+            }
+        }
+    }
+    return true;
+}
+extern "C" int SteveUi_TestMouseClick(int button) {
+    const bool down=Fast::Fast3dWindow::mouseButtonInterceptor(true,button);
+    const bool up=Fast::Fast3dWindow::mouseButtonInterceptor(false,button);
+    return down && up && !Ship::Context::GetRawInstance()->GetWindow()->GetMouseState(static_cast<Ship::MouseBtn>(button));
+}
 extern "C" void SteveUi_Frame(int scancode) {
+    Fast::Fast3dWindow::mouseButtonInterceptor=SteveMouseButton;
     if(!inventory) {inventory=std::make_shared<Inventory>();gameGui()->AddGuiWindow(inventory);hotbar=std::make_shared<Hotbar>();gameGui()->AddGuiWindow(hotbar);}
     if(scancode==static_cast<int>(Ship::KbScancode::LUS_KB_J) && !inventory->IsVisible()) SteveActor_RequestJump();
     if(scancode==static_cast<int>(Ship::KbScancode::LUS_KB_I)) inventory->ToggleVisibility();

@@ -13,7 +13,8 @@ extern "C" {
 static StevePose sPose;
 static int sConnected;
 static uint32_t sSlot;
-static int sJumpRequested;
+static int sJumpRequested,sUseRequested;
+void SteveActor_RequestUse(void) {sUseRequested=1;}
 void SteveActor_RequestJump(void) {sJumpRequested=1;}
 void StevePlayer_Jump(Player* player,PlayState* play);
 void SteveActor_SelectSlot(uint32_t slot) {sSlot=slot%10;}
@@ -27,6 +28,7 @@ int SteveTerrain_Contains(float x,float y,float z);
 int SteveTerrain_ClippedTriangles(void);
 int SteveUi_TestDraws(void);
 int SteveUi_TextureCount(void);
+int SteveUi_TestMouseClick(int button);
 int SteveActor_IsReady(void) { return sConnected && CVarGetInteger("gEnhancements.SteveBridge",1) && SteveBridge_GetPose(&sPose); }
 static PlayState* sPlay;
 int SteveActor_HudAllowed(void) {
@@ -64,7 +66,8 @@ int SteveActor_IsAttackInfo(const ColliderInfo* info) {
     return matched;
 }
 static int sTestMode=-1, sTestFrame, sRenderedFrames;
-static float sJumpTestPeak;
+static float sJumpTestPeak,sMouseFlightBefore;
+static int sJumpTestPlaced,sJumpTestLanded,sMouseGlide,sMouseBoost,sMouseReserved;
 static uint32_t sTestPick, sTestFood, sTestBow, sTestArrows;
 static int sTestShield, sTestDamage, sTestCollision;
 static int sTestBasePassed,sTestTntPlaced,sTestTntPrimed,sTestTntExplosion,sTestSwap,sTestGlide;
@@ -133,7 +136,7 @@ static void SteveActor_TestInput(SteveInput* packet) {
         sTestFlightStart=GET_PLAYER(sPlay)->actor.world.pos;
         GET_PLAYER(sPlay)->actor.bgCheckFlags&=~BGCHECKFLAG_GROUND;
         packet->y=GET_PLAYER(sPlay)->actor.world.pos.y/20;packet->flags&=~2u;
-        SteveBridge_RequestCommand(4,0,0);
+        SteveUi_TestMouseClick(2);
     }
     if(sTestFrame==810) sTestGlide=sPose.flying &&
         (fabsf(GET_PLAYER(sPlay)->actor.world.pos.x-sTestFlightStart.x)+fabsf(GET_PLAYER(sPlay)->actor.world.pos.z-sTestFlightStart.z)>5);
@@ -254,9 +257,21 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
     if(getenv("STEVE_JUMP_TEST")) {
         sTestMode=2;
         if(sConnected) {
-            sTestFrame++;sSlot=4;
+            sTestFrame++;sSlot=sTestFrame>=205?7u:4u;
             if(sTestFrame==20){actor->world.pos.x=5;actor->world.pos.z=5;sOrigin=actor->world.pos;}
-            if(sTestFrame==40)sJumpRequested=1;
+            if(sTestFrame==40)sMouseReserved=SteveUi_TestMouseClick(1);
+            if(sTestFrame==185)SteveBridge_RequestCommand(2,6,0);
+            if(sTestFrame==200){actor->world.pos.y+=500;actor->bgCheckFlags&=~BGCHECKFLAG_GROUND;}
+            if(sTestFrame==201)sMouseReserved&=SteveUi_TestMouseClick(2);
+            if(sTestFrame==210){sMouseGlide=sPose.flying;sMouseFlightBefore=sqrtf(sPose.flight_x*sPose.flight_x+sPose.flight_y*sPose.flight_y+sPose.flight_z*sPose.flight_z);}
+            if(sTestFrame==215)sMouseReserved&=SteveUi_TestMouseClick(2);
+            if(sTestFrame>=220 && sTestFrame<245 && sqrtf(sPose.flight_x*sPose.flight_x+sPose.flight_y*sPose.flight_y+sPose.flight_z*sPose.flight_z)>sMouseFlightBefore+0.1f)sMouseBoost=1;
+            if(sTestFrame==185 || sTestFrame==200 || sTestFrame==201 || sTestFrame==210 || sTestFrame==215 || sTestFrame==225) {
+                FILE* trace=fopen("steve-mouse-trace.log","a");
+                if(trace){fprintf(trace,"frame=%d y=%.2f grounded=%u hud=%d chest=%u equip=%u fly=%u kind=%u ack=%llu result=%u use=%d\n",
+                    sTestFrame,actor->world.pos.y,(unsigned)(actor->bgCheckFlags&BGCHECKFLAG_GROUND),SteveActor_HudAllowed(),sPose.chest.id,
+                    sPose.equipment_flags,sPose.flying,sPose.item_kind,(unsigned long long)sPose.command_ack,sPose.command_result,sUseRequested);fclose(trace);}
+            }
             input->cur.button=(sTestFrame>=46 && sTestFrame<=50)?BTN_A:0;
         }
     }
@@ -292,6 +307,8 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
         if (input->cur.button & BTN_CLEFT) packet.buttons |= 64;
         if (input->cur.button & BTN_CRIGHT) packet.buttons |= 128;
     }
+    if(sUseRequested && sConnected && SteveActor_HudAllowed() && !SteveUi_IsOpen())packet.buttons|=1;
+    sUseRequested=0;
     packet.locked = player->focusActor != NULL;
     if (player->focusActor != NULL) {
         packet.tx = player->focusActor->world.pos.x / 20.0f;
@@ -470,14 +487,18 @@ void SteveActor_Update(Actor* actor, PlayState* play) {
 void SteveActor_PostUpdate(Actor* actor,PlayState* play) {
     if(sTestMode==2) {
         const float rise=actor->world.pos.y-sOrigin.y;
-        if(rise>sJumpTestPeak)sJumpTestPeak=rise;
+        if(sTestFrame<=180 && rise>sJumpTestPeak)sJumpTestPeak=rise;
         if(sTestFrame==180) {
             int placed=0;
             for(int i=0;i<128;i++)if(sPose.cells[i].active && sPose.cells[i].kind==5 &&
                 fabsf(sPose.cells[i].x-0.5f)<0.1f && fabsf(sPose.cells[i].z-0.5f)<0.1f)placed=1;
+            sJumpTestPlaced=placed;sJumpTestLanded=rise>=19 && (actor->bgCheckFlags&BGCHECKFLAG_GROUND);
+        }
+        if(sTestFrame==260) {
             FILE* log=fopen("steve-jump-test.log","w");
-            if(log){fprintf(log,"%s native manual jump: peak=%.2f underfoot_block=%d landed_y=%.2f\n",
-                sJumpTestPeak>22 && placed && rise>=19?"PASS":"FAIL",sJumpTestPeak,placed,rise);fclose(log);}
+            if(log){fprintf(log,"%s native mouse controls: jump_peak=%.2f underfoot_block=%d landed=%d reserved=%d glide=%d fireworks_boost=%d\n",
+                sJumpTestPeak>22 && sJumpTestPlaced && sJumpTestLanded && sMouseReserved && sMouseGlide && sMouseBoost?"PASS":"FAIL",
+                sJumpTestPeak,sJumpTestPlaced,sJumpTestLanded,sMouseReserved,sMouseGlide,sMouseBoost);fclose(log);}
             SteveActor_RequestExit();
         }
     }

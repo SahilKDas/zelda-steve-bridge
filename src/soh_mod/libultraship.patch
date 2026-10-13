@@ -1,3 +1,16 @@
+diff --git a/include/fast/Fast3dWindow.h b/include/fast/Fast3dWindow.h
+index 7c16ca1..6308c5e 100644
+--- a/include/fast/Fast3dWindow.h
++++ b/include/fast/Fast3dWindow.h
+@@ -27,6 +27,8 @@ enum WindowBackend {
+ 
+ class Fast3dWindow : public Ship::Window {
+   public:
++    // Return true to consume an event before any controller mapping sees it.
++    static std::function<bool(bool,int)> mouseButtonInterceptor;
+     Fast3dWindow();
+     Fast3dWindow(std::vector<std::shared_ptr<Ship::GuiWindow>> guiWindows);
+     Fast3dWindow(std::shared_ptr<Ship::Gui> gui);
 diff --git a/include/fast/interpreter.h b/include/fast/interpreter.h
 index 4c6a705..74124d5 100644
 --- a/include/fast/interpreter.h
@@ -36,6 +49,41 @@ index 4c6a705..74124d5 100644
 -                                      uint8_t resize, bool forceFixedAspect = false);
 \ No newline at end of file
 +                                      uint8_t resize, bool forceFixedAspect = false);
+diff --git a/src/fast/Fast3dWindow.cpp b/src/fast/Fast3dWindow.cpp
+index 2b77a5f..76613a7 100644
+--- a/src/fast/Fast3dWindow.cpp
++++ b/src/fast/Fast3dWindow.cpp
+@@ -19,6 +19,8 @@
+ 
+ namespace Fast {
+ 
++std::function<bool(bool,int)> Fast3dWindow::mouseButtonInterceptor; 
++
+ extern void GfxSetInstance(std::shared_ptr<Interpreter> gfx);
+ 
+ Fast3dWindow::Fast3dWindow(std::shared_ptr<Ship::Gui> gui, std::shared_ptr<FastMouseStateManager> mouseStateManager)
+@@ -281,6 +283,7 @@ Ship::CoordsF Fast3dWindow::GetMouseWheel() {
+ }
+ 
+ bool Fast3dWindow::GetMouseState(Ship::MouseBtn btn) {
++    if(mouseButtonInterceptor && mouseButtonInterceptor(false,static_cast<int>(btn)))return false;
+     return mWindowManagerApi->GetMouseState(static_cast<uint32_t>(btn));
+ }
+ 
+@@ -372,11 +375,13 @@ void Fast3dWindow::AllKeysUp() {
+ }
+ 
+ bool Fast3dWindow::MouseButtonUp(int button) {
++    if(mouseButtonInterceptor && mouseButtonInterceptor(false,button))return true;
+     return Ship::Context::GetRawInstance()->GetControlDeck()->ProcessMouseButtonEvent(
+         false, static_cast<Ship::MouseBtn>(button));
+ }
+ 
+ bool Fast3dWindow::MouseButtonDown(int button) {
++    if(mouseButtonInterceptor && mouseButtonInterceptor(true,button))return true;
+     bool isProcessed = Ship::Context::GetRawInstance()->GetControlDeck()->ProcessMouseButtonEvent(
+         true, static_cast<Ship::MouseBtn>(button));
+     return isProcessed;
 diff --git a/src/fast/interpreter.cpp b/src/fast/interpreter.cpp
 index 2b51ad7..9c88645 100644
 --- a/src/fast/interpreter.cpp

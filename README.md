@@ -34,12 +34,14 @@ for Start/pause. Zelda uses context-sensitive A actions and automatic ledge jump
 Controller bindings remain configurable in SoH's input settings.
 
 Steve adds **1â€“9 and 0**, or the **mouse wheel**, to select the ten hotbar slots.
-Left/Right arrows also cycle slots. **J** performs a manual jump from solid ground. While airborne, tap **X** with
+Left/Right arrows also cycle slots. **Middle-click** (or **J**) performs a manual jump from solid ground. While airborne, tap **X** with
 cobblestone or obsidian to place a block directly beneath your feet; jump high
 enough to clear its top. **I** opens/closes the inventory: click two slots
 to swap their contents. Select the elytra there and click **Equip selected / swap
-chest**, then press **V** while airborne to toggle gliding. Select fireworks and
-press **X** during flight for a boost. Landing ends flight.
+chest**, then **right-click** (or press **V**) while airborne to toggle gliding. Select fireworks and
+**right-click** (or press **X**) during flight for a boost. Middle/right mouse
+buttons are intercepted before SoH controller mappings while this mod is enabled;
+they cannot activate Zelda buttons. Steve actions are suppressed in menus. Landing ends flight.
 
 | Key | Starting item | Supply |
 |---|---|---|

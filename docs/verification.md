@@ -104,3 +104,17 @@ PASS native manual jump: peak=54.00 underfoot_block=1 landed_y=45.00
 Heights in this diagnostic are relative to the initial warp origin.
 `scripts/play-forest.ps1` boots at Kokiri Forest's central area in a temporary
 Zelda debug save and restores the previous boot/warp settings when the game closes.
+
+Mouse controls are now reserved before SoH controller dispatch. Both press and
+release events are consumed, and direct mouse-state queries return false for
+middle/right buttons while the mod is enabled. Middle-click requests jump;
+right-click toggles glide or uses selected fireworks during flight. Menus suppress
+Steve actions. Keyboard J/V/X alternatives remain available.
+
+The native test dispatches the same mouse handler and checks reservation, actual
+jump/placement/landing, glide and rocket acceleration. Its flight starts above
+the forest roof to avoid an immediate collision ending the glide.
+
+```text
+PASS native mouse controls: jump_peak=54.00 underfoot_block=1 landed=1 reserved=1 glide=1 fireworks_boost=1
+```
